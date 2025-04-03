@@ -1,3 +1,7 @@
+hydra:
+  run:
+    dir: ${oc.env:CHECKPOINT_SAVE} 
+
 data:
   tokenizer: null
   train_files: ~/data/rlhf/gsm8k/train.parquet
@@ -213,3 +217,6 @@ trainer:
   remove_previous_ckpt_in_save: False
   del_local_ckpt_after_load: False
   default_local_dir: checkpoints/${trainer.project_name}/${trainer.experiment_name}
+
+tensorboard_log_dir: runs
+track_data_path: ''

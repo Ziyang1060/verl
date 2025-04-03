@@ -106,6 +106,7 @@ class ResourcePoolManager:
 
     def _check_resource_available(self):
         """Check if the resource pool can be satisfied in this ray cluster."""
+        # return
         node_available_resources = ray.state.available_resources_per_node()
         node_available_gpus = {node: node_info.get('GPU', 0) for node, node_info in node_available_resources.items()}
 
@@ -512,6 +513,8 @@ class RayPPOTrainer(object):
         # Lists to collect samples for the table
         sample_inputs = []
         sample_outputs = []
+        sample_outputs_lens = []
+        sample_outputs_truncated = []
         sample_scores = []
 
         for test_data in self.val_dataloader:
@@ -527,6 +530,7 @@ class RayPPOTrainer(object):
 
             # Store original inputs
             input_ids = test_batch.batch['input_ids']
+            # prompt_length = input_ids.shape[-1]
             # TODO: Can we keep special tokens except for padding tokens?
             input_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in input_ids]
             sample_inputs.extend(input_texts)
@@ -557,18 +561,33 @@ class RayPPOTrainer(object):
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print('validation generation end')
+            print(f'validation generation end: {len(test_output_gen_batch.batch["responses"])} responses.')
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch['responses']
             output_texts = [self.tokenizer.decode(ids, skip_special_tokens=True) for ids in output_ids]
+            
+            print(f"output_ids[0]: {output_ids[0]}, output_texts[0]: {output_texts[0]}")
+            
+            response_ids = output_ids
+            valid_response_length = test_output_gen_batch.batch['attention_mask'].sum(-1)
+            # print(f"{valid_response_length=}")
+            valid_response_ids = []
+            for i, length in enumerate(valid_response_length):
+                valid_response_ids.append(response_ids[i, :length.item()])
+            valid_response_ids_lens = [len(ids) for ids in valid_response_ids]
+            valid_response_truncated = [int(len(ids) == self.config.data.max_response_length) for ids in valid_response_ids]
+            # print(f"{valid_response_truncated=}")
+            
             sample_outputs.extend(output_texts)
-
+            sample_outputs_lens.extend(valid_response_ids_lens)
+            sample_outputs_truncated.extend(valid_response_truncated)
+            
             test_batch = test_batch.union(test_output_gen_batch)
 
             # evaluate using reward_function
             result = self.val_reward_fn(test_batch, return_dict=True)
-            reward_tensor = result["reward_tensor"]
+            reward_tensor = result["reward_tensor"] # promp * rollout , max_response_length
             if "reward_extra_info" in result:
                 for key, lst in result["reward_extra_info"].items():
                     reward_extra_infos_dict[key].extend(lst)
@@ -578,6 +597,11 @@ class RayPPOTrainer(object):
             sample_scores.extend(scores)
 
             data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
+
+        # sample_outputs sample_outputs_lens sample_scores 一个 list ，repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n
+        assert len(sample_outputs) == len(sample_outputs_lens) == len(sample_scores)
+        for sample_idx in range(len(sample_outputs)):
+            print(f'prompt_id:{sample_idx//self.config.actor_rollout_ref.rollout.val_kwargs.n}-ans_len:{sample_outputs_lens[sample_idx]}-truncated:{sample_outputs_truncated[sample_idx]}-ans_score:{sample_scores[sample_idx]}-prompt:{sample_inputs[sample_idx]}-sample_idx:{sample_idx}')
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
@@ -647,6 +671,44 @@ class RayPPOTrainer(object):
                     metric_dict[pfx] = np.mean(prompt_vals)
 
         val_metric_dict = {f"val/{key}": value for key, value in metric_dict.items()}
+        non_trunc_output_ids_lens = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0]
+        correct_non_trunc_output_ids_lens = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0 and sample_scores[sample_idx] > 0]
+        incorrect_non_trunc_output_ids_len = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0 and sample_scores[sample_idx] <= 0]
+        additional_val_metric_dict = {
+            'val/non_trunc/mean_len': float(np.mean(non_trunc_output_ids_lens)),
+            "val/non_trunc/std_len": float(np.std(non_trunc_output_ids_lens)),
+            "val/non_trunc/middle_len": float(np.median(non_trunc_output_ids_lens)),
+            "val/non_trunc/max_len": float(max(non_trunc_output_ids_lens) if len(non_trunc_output_ids_lens) > 0 else -1),
+            "val/non_trunc/min_len": float(min(non_trunc_output_ids_lens) if len(non_trunc_output_ids_lens) > 0 else -1),
+            "val/non_trunc/25_percentile_len": float(np.quantile(non_trunc_output_ids_lens, 0.25) if len(non_trunc_output_ids_lens) > 0 else - 1),
+            "val/non_trunc/50_percentile_len": float(np.quantile(non_trunc_output_ids_lens, 0.5) if len(non_trunc_output_ids_lens) > 0 else - 1),
+            "val/non_trunc/75_percentile_len": float(np.quantile(non_trunc_output_ids_lens, 0.75) if len(non_trunc_output_ids_lens) > 0 else - 1 ),
+            "val/non_trunc/95_percentile_len": float(np.quantile(non_trunc_output_ids_lens, 0.95) if len(non_trunc_output_ids_lens) > 0 else - 1),
+            "val/non_trunc/100_percentile_len": float(np.quantile(non_trunc_output_ids_lens, 1) if len(non_trunc_output_ids_lens) > 0 else - 1),
+            
+            'val/correct_non_trunc/mean_len': float(np.mean(correct_non_trunc_output_ids_lens)),
+            "val/correct_non_trunc/std_len": float(np.std(correct_non_trunc_output_ids_lens)),
+            "val/correct_non_trunc/middle_len": float(np.median(correct_non_trunc_output_ids_lens)),
+            "val/correct_non_trunc/max_len": float(max(correct_non_trunc_output_ids_lens) if len(correct_non_trunc_output_ids_lens) > 0 else -1),
+            "val/correct_non_trunc/min_len": float(min(correct_non_trunc_output_ids_lens) if len(correct_non_trunc_output_ids_lens) > 0 else -1),
+            "val/correct_non_trunc/25_percentile_len": float(np.quantile(correct_non_trunc_output_ids_lens, 0.25) if len(correct_non_trunc_output_ids_lens) > 0 else -1) ,
+            "val/correct_non_trunc/50_percentile_len": float(np.quantile(correct_non_trunc_output_ids_lens, 0.5) if len(correct_non_trunc_output_ids_lens) > 0 else -1),
+            "val/correct_non_trunc/75_percentile_len": float(np.quantile(correct_non_trunc_output_ids_lens, 0.75) if len(correct_non_trunc_output_ids_lens) > 0 else -1),
+            "val/correct_non_trunc/95_percentile_len": float(np.quantile(correct_non_trunc_output_ids_lens, 0.95) if len(correct_non_trunc_output_ids_lens) > 0 else -1),
+            "val/correct_non_trunc/100_percentile_len": float(np.quantile(correct_non_trunc_output_ids_lens, 1) if len(correct_non_trunc_output_ids_lens) > 0 else -1),
+            
+            'val/incorrect_non_trunc/mean_len': float(np.mean(incorrect_non_trunc_output_ids_len)),
+            "val/incorrect_non_trunc/std_len": float(np.std(incorrect_non_trunc_output_ids_len)),
+            "val/incorrect_non_trunc/middle_len": float(np.median(incorrect_non_trunc_output_ids_len)),
+            "val/incorrect_non_trunc/max_len": float(max(incorrect_non_trunc_output_ids_len) if len(incorrect_non_trunc_output_ids_len) > 0 else -1),
+            "val/incorrect_non_trunc/min_len": float(min(incorrect_non_trunc_output_ids_len) if len(incorrect_non_trunc_output_ids_len) > 0 else -1),
+            "val/incorrect_non_trunc/25_percentile_len": float(np.quantile(incorrect_non_trunc_output_ids_len, 0.25) if len(incorrect_non_trunc_output_ids_len) > 0 else -1 ),
+            "val/incorrect_non_trunc/50_percentile_len": float(np.quantile(incorrect_non_trunc_output_ids_len, 0.5) if len(incorrect_non_trunc_output_ids_len) > 0 else -1),
+            "val/incorrect_non_trunc/75_percentile_len": float(np.quantile(incorrect_non_trunc_output_ids_len, 0.75) if len(incorrect_non_trunc_output_ids_len) > 0 else -1),
+            "val/incorrect_non_trunc/95_percentile_len": float(np.quantile(incorrect_non_trunc_output_ids_len, 0.95) if len(incorrect_non_trunc_output_ids_len) > 0 else -1),
+            "val/incorrect_non_trunc/100_percentile_len": float(np.quantile(incorrect_non_trunc_output_ids_len, 1) if len(incorrect_non_trunc_output_ids_len) > 0 else -1),
+        }
+        val_metric_dict.update(additional_val_metric_dict)
         return val_metric_dict
 
     def init_workers(self):

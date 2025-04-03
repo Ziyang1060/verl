@@ -23,11 +23,13 @@ from collections import defaultdict
 from tqdm import tqdm
 import numpy as np
 import torch
+import os
 
 from verl import DataProto
 from verl.trainer.ppo.ray_trainer import RayPPOTrainer, _timer, apply_kl_penalty, compute_advantage, AdvantageEstimator
 from verl.trainer.ppo.metric_utils import (compute_data_metrics, compute_throughout_metrics, compute_timing_metrics,
-                                           reduce_metrics)
+                                           reduce_metrics,_compute_response_info)
+from verl.utils.debug.track_train_data import track_batch
 
 
 class RayDAPOTrainer(RayPPOTrainer):
@@ -159,6 +161,52 @@ class RayDAPOTrainer(RayPPOTrainer):
                         else:
                             new_batch.batch['token_level_rewards'] = new_batch.batch['token_level_scores']
 
+                    # print(f"response.shape={new_batch.batch['responses'].shape}") # [train_prompt_bsz * roll_out.n, max_length] torch.Size([256, 20480])
+                    
+                    # response_info = _compute_response_info(new_batch) 
+                    # response_length = response_info['response_length']
+                    # print(f"response_length.shape={response_length.shape}")  # [train_prompt_bsz * roll_out.n] torch.Size([256])
+                    
+                    # seq_reward = new_batch.batch['token_level_scores'].sum(dim=-1).numpy()
+                    # print(f"seq_reward.shape={seq_reward.shape}") #  [train_prompt_bsz * roll_out.n, 1] (256,) [-1. -1. -1. -1. -1. -1. -1. -1.,...]   
+
+                    # # 将问题拆分为3部分，（1）已经做对的，（2）无法做对的，（1）正在转变的
+                    # def classify_vectors(roll_out):
+                    #     batch_size_prompt = len(roll_out)
+                    #     class_1_indices = [] # 正在转变的
+                    #     class_2_indices = [] # 已经全部做对的
+                    #     class_3_indices = [] # 无法做对的
+
+                    #     for i in range(batch_size_prompt):
+                    #         std_value = np.std(roll_out[i])
+                    #         if std_value > 0:
+                    #             class_1_indices.append(i)
+                    #         elif std_value == 0:
+                    #             if np.all(roll_out[i] > 0):
+                    #                 class_2_indices.append(i)
+                    #             elif np.all(roll_out[i] <= 0):
+                    #                 class_3_indices.append(i)
+
+                    #     # 根据索引提取数据
+                    #     roll_out_class_1 = roll_out[class_1_indices] if class_1_indices else np.array([])
+                    #     roll_out_class_2 = roll_out[class_2_indices] if class_2_indices else np.array([])
+                    #     roll_out_class_3 = roll_out[class_3_indices] if class_3_indices else np.array([])
+
+                    #     return roll_out_class_1, roll_out_class_2, roll_out_class_3
+                    
+                    # response_length_class1, response_length_class2, response_length_class3 = classify_vectors(response_length)
+                    # print("ALL RIGHT/mean_len: ", float(np.mean(response_length_class2)))
+                    # print("ALL RIGHT/std_len: ", float(np.std(response_length_class2)))
+                    # print("ALL RIGHT/middle_len: ", float(np.median(response_length_class2)))
+                    # print("ALL WRONG/mean_len: ", float(np.mean(response_length_class3)))
+                    # print("ALL WRONG/std_len: ", float(np.std(response_length_class3)))
+                    # print("ALL WRONG/middle_len: ", float(np.median(response_length_class3)))
+                    # print("Changing/mean_len: ", float(np.mean(response_length_class1)))
+                    # print("Changing/std_len: ", float(np.std(response_length_class1)))
+                    # print("Changing/middle_len: ", float(np.median(response_length_class1)))
+            
+                    
+                    
                     if not self.config.algorithm.filter_groups.enable:
                         batch = new_batch
                     else:  # NOTE: When prompts after filtering is less than train batch size, we skip to the next generation batch
@@ -286,9 +334,6 @@ class RayDAPOTrainer(RayPPOTrainer):
                 timing_raw = defaultdict(float)  # clear timing
 
                 metrics["train/num_gen_batches"] = num_gen_batches
-                batch = None
-                num_prompt_in_batch = 0
-                num_gen_batches = 0
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
@@ -300,3 +345,21 @@ class RayDAPOTrainer(RayPPOTrainer):
 
                 progress_bar.update(1)
                 self.global_steps += 1
+                if self.config.track_data_path != '':
+                    if not os.path.exists(self.config.track_data_path):
+                        os.makedirs(self.config.track_data_path)
+                    track_batch(batch, f"{self.config.track_data_path}/train_data.jsonl", 
+                            self.tokenizer, step=self.global_steps)
+
+                if self.global_steps >= self.total_training_steps:
+                    # perform validation after training
+                    if self.val_reward_fn is not None:
+                        val_metrics = self._validate()
+                        pprint(f'Final validation metrics: {val_metrics}')
+                        logger.log(data=val_metrics, step=self.global_steps)
+                    return
+
+                batch = None
+                num_prompt_in_batch = 0
+                num_gen_batches = 0
+

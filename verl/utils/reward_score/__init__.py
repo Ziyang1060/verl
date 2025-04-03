@@ -43,6 +43,10 @@ def _default_compute_score(data_source, solution_str, ground_truth, extra_info=N
     elif data_source in ['hiyouga/geometry3k']:
         from . import geo3k
         res = geo3k.compute_score(solution_str, ground_truth)
+    elif data_source == "deepscaler":
+        from .deepscaler_math.deepscaler_math_reward import deepscaler_reward_fn
+        print("_default_compute_score: Using deepscaler_reward_fn")
+        res = deepscaler_reward_fn(solution_str, ground_truth)
     else:
         raise NotImplementedError(f"Reward function is not implemented for {data_source=}")
 

@@ -245,6 +245,7 @@ class DataParallelPPOActor(BasePPOActor):
             non_tensor_select_keys = ['multi_modal_inputs']
             dataloader = data.select(select_keys, non_tensor_select_keys).chunk(num_mini_batches)
         else:
+            # ToDo: 加一个 shuffle 
             dataloader = batch.split(self.config.ppo_mini_batch_size)
 
         metrics = {}
