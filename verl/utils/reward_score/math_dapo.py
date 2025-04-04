@@ -195,7 +195,11 @@ def is_correct_minerva(solution_str: str,
     Returns:
         Tuple of (is_correct, normalized_prediction)
     """
+    # 根据r"(?i)Answer\s*:\s*([^\n]+)"来提取answer，提取最后一个匹配上的，然后调用normalize_final_answer对其normalize，最后直接用字符串匹配来判断，这个答案最后低估很正常，因为它时一个非常简单的normalize
+    # 这种匹配方式感觉最后reward会偏低，存在噪声。例如2/6，和1/3，会匹配成不一样的，等价的数据表达式可以有多种表达方式
+    # **最后返回的pred，是和gt直接匹配的那个，可以再print验证下**
     # Extract answer from solution
+    # gt_need_extract设置是False，默认不对gt提取\\bboxed，而是直接用normalize_final_answer对gt处理，这个函数中也有提取\\boxed的能力
     match = re.findall(answer_pattern, solution_str)
     extracted_answer = match[-1] if match else "[INVALID]"
     pred = normalize_final_answer(extracted_answer)
@@ -255,7 +259,7 @@ def verify(solution_str: str,
         correct, pred = is_correct_strict_box(solution_str, answer, pause_tokens_index)
         return correct == 1, pred
 
-    correct, pred = is_correct_minerva(solution_str, answer)
+    correct, pred = is_correct_minerva(solution_str, answer) # 正常调用该函数
     return correct, pred
 
 
@@ -278,7 +282,7 @@ def compute_score(solution_str: str,
     solution_str = solution_str[-300:]  # The longest answer in MATH-500 has 159 characters
 
     # Verify the solution
-    correct, pred = verify(solution_str, ground_truth, strict_box_verify, pause_tokens_index)
+    correct, pred = verify(solution_str, ground_truth, strict_box_verify, pause_tokens_index) # -> 调用时，strict_box_verify为默认值False，pause_tokens_index为默认值None
 
     reward = 1.0 if correct else -1.0
     acc = correct

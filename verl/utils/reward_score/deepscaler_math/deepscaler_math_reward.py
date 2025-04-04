@@ -39,8 +39,8 @@ class RewardMathFn(RewardFn):
         else:
             return RewardOutput(reward=self.config.format_error_reward, is_correct=False)
         
-        model_answer = extract_answer(model_solution)
-        if model_answer is None:
+        model_answer = extract_answer(model_solution) # 抽取被包裹在\\boxed中的answer
+        if model_answer is None: 
             return RewardOutput(reward=self.config.format_error_reward, is_correct=False)
 
         # Process the ground truth(s)
@@ -57,7 +57,7 @@ class RewardMathFn(RewardFn):
         for truth in ground_truths:
             truth = str(truth)
             if "\\boxed" in truth:
-                processed_truth = extract_answer(truth)
+                processed_truth = extract_answer(truth) # 如果gt被包裹在\\boxed中则抽取出来对应的内容
                 if processed_truth is not None:
                     processed_ground_truths.append(processed_truth)
             else:
@@ -67,6 +67,7 @@ class RewardMathFn(RewardFn):
             return RewardOutput(reward=self.config.unk_error_reward, is_correct=False)
 
         # Check against all possible correct answers
+        # 分别根据grade_answer_mathd和grade_answer_sympy去判断，任意一个对则算对，保召回
         for ground_truth in processed_ground_truths:
             is_correct = grade_answer_mathd(model_answer, ground_truth) or grade_answer_sympy(model_answer, ground_truth)
             if is_correct:
