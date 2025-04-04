@@ -57,10 +57,11 @@ class RewardOutput:
     Attributes:
         reward (float): The computed reward value based on the evaluation of the model's response.
         is_correct (bool): A boolean flag indicating whether the model's response is deemed correct.
+        normalized_pred (str): The normalized predict
     """
     reward: float
     is_correct: bool
-
+    normalized_pred: str
 
 class RewardFn:
     """Abstract base class for defining reward calculation strategies.
