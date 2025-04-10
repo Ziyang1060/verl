@@ -5,17 +5,17 @@ WORK_DIR=$(dirname $(dirname $SCRIPT_DIR))
 echo "WORK_DIR=$WORK_DIR"
 
 # 配置环境变量 A800使用
-export NCCL_IB_TC=136
-export NCCL_IB_SL=5
-export NCCL_IB_GID_INDEX=3
-export NCCL_SOCKET_IFNAME=bond0
-export TORCH_DISTRIBUTED_DEBUG=INFO
-export GLOO_SOCKET_IFNAME=bond0
-export TP_SOCKET_IFNAME=bond0
-export NCCL_DEBUG=INFO
-export NCCL_IB_HCA=mlx5
-export NCCL_IB_TIMEOUT=22
-export NCCL_IB_QPS_PER_CONNECTION=8
+# export NCCL_IB_TC=136
+# export NCCL_IB_SL=5
+# export NCCL_IB_GID_INDEX=3
+# export NCCL_SOCKET_IFNAME=bond0
+# export TORCH_DISTRIBUTED_DEBUG=INFO
+# export GLOO_SOCKET_IFNAME=bond0
+# export TP_SOCKET_IFNAME=bond0
+# export NCCL_DEBUG=INFO
+# export NCCL_IB_HCA=mlx5
+# export NCCL_IB_TIMEOUT=22
+# export NCCL_IB_QPS_PER_CONNECTION=8
 
 # vllm缓存目录
 export VLLM_CONFIG_ROOT=${CHECKPOINT_SAVE}
@@ -26,6 +26,8 @@ export PYTHONPATH="$(pwd):$PYTHONPATH"
 # ray环境变量
 export VLLM_ATTENTION_BACKEND=XFORMERS
 export RAY_MASTER_PORT=6379
+
+
 # ray debug环境变量
 export RAY_record_ref_creation_sites=1
 export HYDRA_FULL_ERROR=1
@@ -182,10 +184,12 @@ set -x
 if [ ${RANK} == 0 ]; then
   # 启动ray集群head节点
   ray start --head --port=${RAY_MASTER_PORT} --dashboard-host 0.0.0.0 ${ray_start_args[@]}
-  sleep 10s
 
+  ray status
+  
   while true; do
     count=`python /global_data/med/zengziyang/verl/ray_available_node_count.py`
+    # count=`python /global_data/med/lukai/scripts/ray_available_node_count.py`
     # 判断ray是否和worker connected
     if [[ $count -eq ${WORLD_SIZE} ]]; then
       break # 全部就绪继续执行
@@ -207,7 +211,6 @@ if [ ${RANK} == 0 ]; then
   ray stop --force
   exit ${exit_code}
 else
-  sleep 20s
   # 启动ray集群
   ray start --address ${MASTER_ADDR}:${RAY_MASTER_PORT} --num-gpus 8 --block ${ray_start_args[@]}
 fi

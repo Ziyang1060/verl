@@ -599,9 +599,10 @@ class RayPPOTrainer(object):
             data_source_lst.append(test_batch.non_tensor_batch.get('data_source', ['unknown'] * reward_tensor.shape[0]))
 
         # sample_outputs sample_outputs_lens sample_scores 一个 list ，repeat_times=self.config.actor_rollout_ref.rollout.val_kwargs.n
-        assert len(sample_outputs) == len(sample_outputs_lens) == len(sample_scores)
+        sample_accs = reward_extra_infos_dict["acc"]
+        assert len(sample_outputs) == len(sample_outputs_lens) == len(sample_scores) == len(sample_accs)
         for sample_idx in range(len(sample_outputs)):
-            print(f'prompt_id:{sample_idx//self.config.actor_rollout_ref.rollout.val_kwargs.n}-ans_len:{sample_outputs_lens[sample_idx]}-truncated:{sample_outputs_truncated[sample_idx]}-ans_score:{sample_scores[sample_idx]}-prompt:{sample_inputs[sample_idx]}-sample_idx:{sample_idx}')
+            print(f'prompt_id:{sample_idx//self.config.actor_rollout_ref.rollout.val_kwargs.n}-ans_len:{sample_outputs_lens[sample_idx]}-truncated:{sample_outputs_truncated[sample_idx]}-ans_score:{sample_scores[sample_idx]}-ans_acc:{sample_accs[sample_idx]}-prompt:{sample_inputs[sample_idx]}-sample_idx:{sample_idx}')
 
         self._maybe_log_val_generations(inputs=sample_inputs, outputs=sample_outputs, scores=sample_scores)
 
@@ -672,8 +673,8 @@ class RayPPOTrainer(object):
 
         val_metric_dict = {f"val/{key}": value for key, value in metric_dict.items()}
         non_trunc_output_ids_lens = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0]
-        correct_non_trunc_output_ids_lens = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0 and sample_scores[sample_idx] > 0]
-        incorrect_non_trunc_output_ids_len = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0 and sample_scores[sample_idx] <= 0]
+        correct_non_trunc_output_ids_lens = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0 and sample_accs[i] > 0]
+        incorrect_non_trunc_output_ids_len = [valid_response_ids_lens[i] for i in range(len(valid_response_ids_lens)) if valid_response_truncated[i] == 0 and sample_accs[i] <= 0]
         additional_val_metric_dict = {
             'val/non_trunc/mean_len': float(np.mean(non_trunc_output_ids_lens)),
             "val/non_trunc/std_len": float(np.std(non_trunc_output_ids_lens)),

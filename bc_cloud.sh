@@ -6,10 +6,10 @@ pip install vertexai
 pip install -U sentence-transformers
 unset http_proxy https_proxy
 
-# if [ ${RANK} == 0 ]; then
-#   tensorboard --logdir ${CHECKPOINT_SAVE} --host 0.0.0.0 --port 6008 > tensorboard.log 2>&1 &
-#   streamlit run ${CODE_PATH}/rl-board/rl_logging_board.py  --server.port 8901 > rlboard.log 2>&1 &
-# fi
+if [ ${RANK} == 0 ]; then
+  # tensorboard --logdir ${CHECKPOINT_SAVE} --host 0.0.0.0 --port 6008 > tensorboard.log 2>&1 &
+  streamlit run ${CODE_PATH}/rl-board/rl_logging_board.py  --server.port 8901 > rlboard.log 2>&1 &
+fi
 
 cd /global_data/med/zengziyang/verl # Repo root
 
@@ -110,9 +110,9 @@ bash recipe/dapo/run_dist_dapo.sh \
   --actor_rollout_ref.rollout.temperature ${temperature} \
   --actor_rollout_ref.rollout.top_p ${top_p} \
   --actor_rollout_ref.rollout.top_k "${top_k}" \
-  --actor_rollout_ref.rollout.val_kwargs.temperature ${temperature} \
-  --actor_rollout_ref.rollout.val_kwargs.top_p ${top_p} \
-  --actor_rollout_ref.rollout.val_kwargs.top_k ${top_k} \
+  --actor_rollout_ref.rollout.val_kwargs.temperature 0.6 \
+  --actor_rollout_ref.rollout.val_kwargs.top_p 0.95 \
+  --actor_rollout_ref.rollout.val_kwargs.top_k -1 \
   --actor_rollout_ref.rollout.val_kwargs.do_sample True \
   --actor_rollout_ref.rollout.val_kwargs.n 32\
   --actor_rollout_ref.ref.fsdp_config.param_offload ${offload} \

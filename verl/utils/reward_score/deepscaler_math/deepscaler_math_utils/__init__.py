@@ -6,6 +6,7 @@ from .deepscaler_utils import (
     extract_answer,
     grade_answer_sympy,
     grade_answer_mathd,
+    mathd_normalize_answer
 )
 
 __all__ = [
