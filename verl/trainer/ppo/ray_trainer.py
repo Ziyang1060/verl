@@ -56,6 +56,9 @@ from verl.utils.checkpoint.checkpoint_manager import find_latest_ckpt_path
 from verl.utils.metric import (
     reduce_metrics,
 )
+
+from verl.utils.debug.track_train_data import track_batch
+
 from verl.utils.seqlen_balancing import get_seqlen_balanced_partitions, log_seqlen_unbalance
 from verl.utils.torch_functional import masked_mean
 from verl.utils.tracking import ValidationGenerationsLogger
@@ -622,7 +625,7 @@ class RayPPOTrainer:
 
             # unpad
             test_output_gen_batch = unpad_dataproto(test_output_gen_batch_padded, pad_size=pad_size)
-            print("validation generation end")
+            print(f'validation generation end: {len(test_output_gen_batch.batch["responses"])} responses.')
 
             # Store generated outputs
             output_ids = test_output_gen_batch.batch["responses"]
@@ -1083,6 +1086,12 @@ class RayPPOTrainer:
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
 
+                if self.config.track_data_path != '':
+                    if not os.path.exists(self.config.track_data_path):
+                        os.makedirs(self.config.track_data_path)
+                    track_batch(batch, f"{self.config.track_data_path}/train_data.jsonl", 
+                            self.tokenizer, step=self.global_steps)
+                
                 if is_last_step:
                     pprint(f"Final validation metrics: {last_val_metrics}")
                     progress_bar.close()

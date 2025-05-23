@@ -3,4 +3,6 @@ excludes: ["/.git/"]
 env_vars:
   TORCH_NCCL_AVOID_RECORD_STREAMS: "1"
   # If you are using vllm<=0.6.3, you might need to set the following environment variable to avoid bugs:
-  # VLLM_ATTENTION_BACKEND: "XFORMERS"
+  VLLM_ATTENTION_BACKEND: "XFORMERS"
+  WANDB_API_KEY: "0e112ac0ae8b584f4da8d11a5443a11f58c002a0"
+  GLOO_SOCKET_IFNAME: "eth0"
