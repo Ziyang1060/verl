@@ -453,8 +453,16 @@ def compute_policy_loss(
     assert clip_ratio_c > 1.0, "The lower bound of the clip_ratio_c for dual-clip PPO should be greater than 1.0," + f" but get the value: {clip_ratio_c}."
 
     negative_approx_kl = log_prob - old_log_prob
+    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask) 
+    # 正向 KL，用 new policy（当前分布）去近似 old policy（目标分布）所需要的额外信息量
+
+
+    # Pre-CLIP: [R1-Reward: Training Multimodal Reward Model Through Stable Reinforcement Learning]
+    # 避免log_diff过大而找到exp操作溢出，同时防止loss过大
+    negative_approx_kl = torch.clamp(negative_approx_kl, max=np.log(1e3), min=np.log(1e-3)) 
     ratio = torch.exp(negative_approx_kl)
-    ppo_kl = verl_F.masked_mean(-negative_approx_kl, response_mask)
+    # 这里的advantages已经被z-normalization了（均值为0，标准差为1），用3-sigma原则做筛选
+    advantages = torch.clamp(advantages, max=3, min=-3)
 
     pg_losses1 = -advantages * ratio
     if cliprange_low is None:
