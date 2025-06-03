@@ -2,7 +2,7 @@ data:
   tokenizer: null
   use_shm: False
   train_files: ~/data/rlhf/gsm8k/train.parquet
-  val_files: ~/data/rlhf/gsm8k/test.parquet
+  val_files: ['/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_random_sample_wtax.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_uniform_sample_wtax.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0320_tiny_longtail_sample_wtax.test.parquet']
   prompt_key: prompt
   reward_fn_key: data_source
   max_prompt_length: 512
@@ -31,7 +31,7 @@ actor_rollout_ref:
     external_lib: null
     override_config: { }
     enable_gradient_checkpointing: True
-    enable_activation_offload: False
+    enable_activation_offload: True
     use_remove_padding: False
     lora_rank: 0  # Set to positive value to enable LoRA (e.g., 32)
     lora_alpha: 16  # LoRA scaling factor
@@ -164,7 +164,7 @@ critic:
     override_config: { }
     external_lib: ${actor_rollout_ref.model.external_lib}
     enable_gradient_checkpointing: True
-    enable_activation_offload: False
+    enable_activation_offload: True
     use_remove_padding: False
     trust_remote_code: ${actor_rollout_ref.model.trust_remote_code}
     fsdp_config:

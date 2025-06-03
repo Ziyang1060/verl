@@ -5,53 +5,15 @@ export RUNTIME_ENV="./verl/trainer/runtime_env.yaml"
 
 # Ray
 export RAY_MASTER_PORT=6379
-RAY_ADDRESS=${RAY_ADDRESS:-"http://localhost:8265"}
+RAY_ADDRESS=${RAY_ADDRESS:-"http://${MASTER_ADDR}:8265"}
 WORKING_DIR=${WORKING_DIR:-"${PWD}"}
-RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
-NNODES=${NNODES:-4}
-
 echo "WORKING_DIR=$WORKING_DIR"
+RUNTIME_ENV=${RUNTIME_ENV:-"${WORKING_DIR}/verl/trainer/runtime_env.yaml"}
+
 
 # 默认参数声明（可根据需要修改）
 declare -A defaults=(
     ["algorithm.adv_estimator"]="grpo"
-#   ["data.train_files"]="${train_files}"
-#   ["data.val_files"]="${val_files}"
-#   ["data.train_batch_size"]=16
-# #   ["data.val_batch_size"]=16 # DEPRECATED: Validation datasets are sent to inference engines as a whole batch, which will schedule the memory themselves
-#   ["data.max_prompt_length"]=400
-#   ["data.max_response_length"]=2048
-#   ["actor_rollout_ref.model.path"]="model_name_or_path"
-#   ["actor_rollout_ref.actor.optim.lr"]=3e-7
-#   ["actor_rollout_ref.model.use_remove_padding"]=True
-#   ["actor_rollout_ref.actor.ppo_mini_batch_size"]=256
-#   ["actor_rollout_ref.actor.ppo_micro_batch_size_per_gpu"]=16
-#   ["actor_rollout_ref.actor.use_kl_loss"]=True
-#   ["actor_rollout_ref.actor.kl_loss_coef"]=0.001
-#   ["actor_rollout_ref.actor.kl_loss_type"]="low_var_kl"
-#   ["actor_rollout_ref.model.enable_gradient_checkpointing"]=True
-#   ["actor_rollout_ref.actor.fsdp_config.param_offload"]=True
-# #   ["actor_rollout_ref.actor.fsdp_config.grad_offload"]=True
-#   ["actor_rollout_ref.actor.fsdp_config.optimizer_offload"]=True
-#   ["actor_rollout_ref.actor.use_dynamic_bsz"]=True
-#   ["actor_rollout_ref.actor.ppo_max_token_len_per_gpu"]=24000
-#   #  ["actor_rollout_ref.rollout.log_prob_micro_batch_size_per_gpu"]=16
-#   ["actor_rollout_ref.rollout.tensor_model_parallel_size"]=2
-#   ["actor_rollout_ref.rollout.name"]="vllm"
-#   ["actor_rollout_ref.rollout.gpu_memory_utilization"]=0.6
-#   ["actor_rollout_ref.rollout.n"]=8
-#   #  ["actor_rollout_ref.ref.log_prob_micro_batch_size_per_gpu"]=16
-#   ["actor_rollout_ref.ref.fsdp_config.param_offload"]=True
-#   ["algorithm.kl_ctrl.kl_coef"]=0.001
-#   ["trainer.critic_warmup"]=0
-# #   ["tensorboard_log_dir"]="${CHECKPOINT_SAVE}/run"
-#   ["trainer.project_name"]="GRPO_logic_KK"
-#   ["trainer.experiment_name"]="Qwen-7B"
-#   ["trainer.default_local_dir"]="${CHECKPOINT_SAVE}"
-#   ["trainer.default_hdfs_dir"]="null"
-#   ["trainer.save_freq"]=50
-#   ["trainer.test_freq"]=10
-#   ["trainer.total_epochs"]=5
 )
 
 declare -A ray_start_params=(
@@ -136,27 +98,6 @@ cmd_args+=("${other_args[@]}")
 #   fi
 # fi
 
-touch ${CHECKPOINT_SAVE}/_worker_${RANK}_ready
-# 等待所有worker就绪
-while true; do
-  count=0
-  # 遍历所有worker编号
-  for ((x = 0; x < WORLD_SIZE; x++)); do
-    # 检测对应worker的就绪文件
-    if [[ -f "${CHECKPOINT_SAVE}/_worker_${x}_ready" ]]; then
-      ((count++)) # 存在则计数器+1
-    fi
-  done
-  echo "Progress: ${count}/${WORLD_SIZE} workers ready"
-
-  # 判断是否全部就绪
-  if [[ $count -eq ${WORLD_SIZE} ]]; then
-    break # 全部就绪继续执行
-  else
-    sleep 5 # 等待5秒后再次检查
-  fi
-done
-
 which python
 set -x
 
@@ -177,11 +118,11 @@ if [ ${RANK} == 0 ]; then
   # 提交ray任务
   ray job submit --runtime-env="${RUNTIME_ENV}" \
     --working-dir "${WORKING_DIR}" \
-    --address="http://127.0.0.1:8265" \
-    -- python -m recipe.dapo.main_dapo ${cmd_args[@]} \
+    --address="${RAY_ADDRESS}" \
+    -- python -u -m verl.trainer.main_ppo ${cmd_args[@]} \
     trainer.n_gpus_per_node=8 \
     trainer.nnodes=$WORLD_SIZE \
-    trainer.logger=['console','wandb'] 2>&1 >> ${CHECKPOINT_SAVE}/run.log
+    2>&1 | tee -a "${CHECKPOINT_SAVE}/run_`hostname`.log"
   exit_code=${PIPESTATUS[0]}
   # 停止ray集群
   ray stop --force

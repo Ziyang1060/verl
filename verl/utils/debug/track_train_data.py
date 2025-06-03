@@ -3,24 +3,26 @@ import json
 from verl.protocol import DataProto
 
 
-def data2json(batch: DataProto, steps: int, tokenizer) -> List:
+def data2json(batch: DataProto, step: int, tokenizer) -> List:
     result = []
-    for sample in batch:
+    for idx in range(len(batch.batch)):
         data = {}
-        attention_mask = sample.batch['attention_mask']
-        prompt = sample.batch['prompts']
-        response = sample.batch['responses']
+        attention_mask = batch.batch['attention_mask'][idx]
+        prompt = batch.batch['prompts'][idx]
+        response = batch.batch['responses'][idx]
+
         prompt_mask = attention_mask[:prompt.shape[0]]
         response_mask = attention_mask[prompt.shape[0]:]
-
         data["prompt"] = tokenizer.decode(prompt[prompt_mask == 1])
         data["response"] = tokenizer.decode(response[response_mask == 1])
         data["response_tokens"] = [tokenizer.decode(token_id) for token_id in response[response_mask == 1]]
-        data["logprobs"] = sample.batch['old_log_probs'][response_mask == 1].tolist()
-        data["ref_logprobs"] = sample.batch['ref_log_prob'][response_mask == 1].tolist()
-        data["token_rewards"] = sample.batch['advantages'][response_mask == 1].tolist()
-        data['reward'] = sample.batch['token_level_rewards'][response_mask == 1][-1].tolist()
-        data['step'] = steps
+
+        data["logprobs"] = batch.batch['old_log_probs'][idx][response_mask == 1].tolist()
+        data["ref_logprobs"] = batch.batch['ref_log_prob'][idx][response_mask == 1].tolist()
+        data["token_rewards"] = batch.batch['advantages'][idx][response_mask == 1].tolist()
+        data['score'] = batch.batch['token_level_scores'][idx][response_mask == 1][-1].tolist()
+        data['reward'] = batch.batch['token_level_rewards'][idx][response_mask == 1][-1].tolist()
+        data['step'] = step
         result.append(data)
     return result
 

@@ -1,75 +1,75 @@
 # set -x
+ray stop --force
+ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
+export MASTER_ADDR="10.148.1.92"
+export VERIFIER_API_IP_ADDR="10.205.180.108"
+# python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
 
-export MASTER_ADDR="10.148.8.140"
-export VERIFIER_API_IP_ADDR="10.205.156.78"
-python /mnt/hs-1/usr/daoma1/ocean/code/verl/verl/utils/reward_score/rel_label.py # 测试 verifier api
-
+export http_proxy=10.140.24.177:3128
+export https_proxy=10.140.24.177:3128
 pip config set global.trusted-host "pypi.devops.xiaohongshu.com" && pip config set global.index-url "http://pypi.devops.xiaohongshu.com/simple"
 pip install "ray[default,train,tune,serve]"
 pip install torchdata
 pip install wandb
 pip install openai
+pip install peft
 export WANDB_API_KEY="0e112ac0ae8b584f4da8d11a5443a11f58c002a0"
 
-cd /mnt/hs-1/usr/daoma1/ocean/code/verl # Repo root
+cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
 export project_name='RankRL'
-export exp_name='Qwen2p5-32B-cpt-sft-v1-pev2-rl-v1'
+export exp_name='Qwen2p5-32B-cpt-sft-v2-rl-v1_course1'
 
 # Paths
-export MODEL_PATH=${MODEL_PATH:-"/mnt/hs-1/usr/daoma1/warmup_model/qwen2.5_32B_pv2_prefinetune_v3-rel_sft_v1_14w"}
-export CHECKPOINT_SAVE="/mnt/hs-1/usr/daoma1/ocean/code/verl_checkpoint_save/$exp_name"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/qwen2.5_32B_cpt-rel_sft_v1_14w_sft_v2_4w_0530"
+export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
-export TRAIN_FILE=${TRAIN_FILE:-"/mnt/hs-1/usr/daoma1/data/prompt_samesft_zhijiandata_wtax.parquet"}
-export TEST_FILE=${TEST_FILE:-"/mnt/hs-1/usr/daoma1/data/0226_tiny_uniform_sample_wtax.parquet"}
+
+course1="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_course1_1w2.train.parquet"
+course2="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_course2_4k.train.parquet"
+course3="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_course3_1w.train.parquet"
+train_files="['$course1']"
 
 adv_estimator=grpo
 
-kl_coef=0.0
-use_kl_loss=False
-kl_loss_coef=0.0
+total_epochs=3
 
+kl_coef=0.0 # in-reward kl_penalty controller 
+
+use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
+kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
+
+max_prompt_length=$((1024 * 8))
+max_response_length=$((1024 * 3))
+
+loss_agg_mode="seq-mean-token-mean" # 每个序列内先归一化，每个序列等权重，def agg_loss
+
+n_resp_per_prompt=8
+train_prompt_bsz=48
+train_prompt_mini_bsz=16
+
+# off_policy paras
 clip_ratio_low=0.2
 clip_ratio_high=0.28
 
-max_prompt_length=$((1024 * 4))
-max_response_length=$((1024 * 3))
-enable_overlong_buffer=True
-overlong_buffer_len=$((1024 * 1))
-overlong_penalty_factor=1.0
-
-# loss_agg_mode="token-mean"
-loss_agg_mode="seq-mean-token-mean"
-
-enable_filter_groups=True
-filter_groups_metric=seq_final_reward
-max_num_gen_batches=10
-train_prompt_bsz=16
-gen_prompt_bsz=$((train_prompt_bsz * 2)) # train_step = all_data_len / gen_prompt_bsz
-n_resp_per_prompt=16
-train_prompt_mini_bsz=8
-
 # Algorithm
 temperature=1.0
-top_p=1.0
+top_p=0.95
 top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
 
 # Performance Related Parameter
-sp_size=1
 use_dynamic_bsz=True
-actor_ppo_max_token_len=$((max_prompt_length + max_response_length))
-infer_ppo_max_token_len=$((max_prompt_length + max_response_length))
+actor_ppo_max_token_len=$(( 2 * (max_prompt_length + max_response_length) ))
+infer_ppo_max_token_len=$(( 3 * (max_prompt_length + max_response_length) ))
+
 offload=True
-gen_tp=4
 
 bash scripts/run_dist.sh \
-  --data.train_files "${TRAIN_FILE}" \
-  --data.val_files "${TEST_FILE}" \
+  --data.train_files "$train_files" \
   --data.prompt_key prompt \
-  --data.truncation 'left' \
+  --data.truncation 'error' \
   --data.max_prompt_length ${max_prompt_length} \
   --data.max_response_length ${max_response_length} \
-  --data.gen_batch_size ${gen_prompt_bsz} \
   --data.train_batch_size ${train_prompt_bsz} \
   --actor_rollout_ref.rollout.n ${n_resp_per_prompt} \
   --algorithm.adv_estimator ${adv_estimator} \
@@ -78,9 +78,6 @@ bash scripts/run_dist.sh \
   --actor_rollout_ref.actor.kl_loss_coef ${kl_loss_coef} \
   --actor_rollout_ref.actor.clip_ratio_low ${clip_ratio_low} \
   --actor_rollout_ref.actor.clip_ratio_high ${clip_ratio_high} \
-  --algorithm.filter_groups.enable ${enable_filter_groups} \
-  --algorithm.filter_groups.max_num_gen_batches ${max_num_gen_batches} \
-  --algorithm.filter_groups.metric ${filter_groups_metric} \
   --actor_rollout_ref.model.use_remove_padding True \
   --actor_rollout_ref.actor.use_dynamic_bsz ${use_dynamic_bsz} \
   --actor_rollout_ref.ref.log_prob_use_dynamic_bsz ${use_dynamic_bsz} \
@@ -92,43 +89,37 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --actor_rollout_ref.model.enable_gradient_checkpointing True \
   --actor_rollout_ref.actor.optim.lr 1e-6 \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps 10 \
-  --actor_rollout_ref.actor.optim.weight_decay 0.1 \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
   --actor_rollout_ref.actor.fsdp_config.param_offload ${offload} \
   --actor_rollout_ref.actor.fsdp_config.optimizer_offload ${offload} \
   --actor_rollout_ref.actor.entropy_coeff 0 \
   --actor_rollout_ref.actor.grad_clip 1.0 \
   --actor_rollout_ref.actor.loss_agg_mode ${loss_agg_mode} \
-  --actor_rollout_ref.actor.ulysses_sequence_parallel_size ${sp_size} \
-  --actor_rollout_ref.rollout.gpu_memory_utilization 0.80 \
-  --actor_rollout_ref.rollout.tensor_model_parallel_size ${gen_tp} \
+  --actor_rollout_ref.actor.ulysses_sequence_parallel_size 1 \
+  --actor_rollout_ref.rollout.gpu_memory_utilization 0.85 \
+  --actor_rollout_ref.rollout.tensor_model_parallel_size 4 \
   --actor_rollout_ref.rollout.enable_chunked_prefill True \
   --actor_rollout_ref.rollout.max_num_batched_tokens $((max_prompt_length + max_response_length)) \
   --actor_rollout_ref.rollout.temperature ${temperature} \
   --actor_rollout_ref.rollout.top_p ${top_p} \
-  --actor_rollout_ref.rollout.top_k "${top_k}" \
+  --actor_rollout_ref.rollout.top_k ${top_k} \
   --actor_rollout_ref.rollout.val_kwargs.temperature ${temperature} \
   --actor_rollout_ref.rollout.val_kwargs.top_p ${top_p} \
   --actor_rollout_ref.rollout.val_kwargs.top_k ${top_k} \
-  --actor_rollout_ref.rollout.val_kwargs.do_sample True \
-  --actor_rollout_ref.rollout.val_kwargs.n 16\
+  --actor_rollout_ref.rollout.val_kwargs.do_sample False \
+  --actor_rollout_ref.rollout.val_kwargs.n 1 \
   --actor_rollout_ref.ref.fsdp_config.param_offload ${offload} \
-  --actor_rollout_ref.ref.ulysses_sequence_parallel_size ${sp_size} \
+  --actor_rollout_ref.ref.ulysses_sequence_parallel_size 1 \
   --actor_rollout_ref.rollout.dtype "bfloat16" \
   --actor_rollout_ref.actor.fsdp_config.fsdp_size -1 \
-  --reward_model.reward_manager dapo \
-  --+custom_reward_function.overlong_buffer.enable ${enable_overlong_buffer} \
-  --+custom_reward_function.overlong_buffer.len ${overlong_buffer_len} \
-  --+custom_reward_function.overlong_buffer.penalty_factor ${overlong_penalty_factor} \
+  --reward_model.reward_manager "naive" \
   --trainer.project_name ${project_name} \
   --trainer.experiment_name ${exp_name} \
-  --+trainer.val_before_train True \
-  --trainer.test_freq 5 \
-  --trainer.save_freq 5 \
-  --trainer.total_epochs 1 \
+  --trainer.val_before_train True \
+  --trainer.test_freq 120 \
+  --trainer.save_freq -1 \
+  --trainer.total_epochs ${total_epochs} \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
-  --trainer.resume_mode auto \
-  --track_data_path ${CHECKPOINT_SAVE}/train_sample
+  --trainer.resume_mode "disable" \
+  --track_data_path "${CHECKPOINT_SAVE}/train_sample"

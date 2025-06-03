@@ -86,7 +86,7 @@ def get_verifier_judgement(think_cot, answer_pred):
 def check_reasoning_consistency(think_cot, answer_pred):
     call_verifier = False
     if think_cot == "" or answer_pred == -100:
-        return False
+        return False, call_verifier
 
     rule_consistency = False
     verifier_consistency = False
@@ -132,7 +132,8 @@ def compute_score(predict_str, ground_truth):
         "pred_acc": pred_acc,
         "format_acc": format_acc,
         "consistency_acc": reasoning_consistency_acc,
-        "is_call_verifier": is_call_verifier
+        "is_call_verifier": is_call_verifier,
+        "ground_truth": ground_truth
     }
 
 

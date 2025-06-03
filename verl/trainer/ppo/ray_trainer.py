@@ -745,6 +745,27 @@ class RayPPOTrainer:
                         metric_sec = "val-aux"
                     pfx = f"{metric_sec}/{data_source}/{var_name}/{metric_name}"
                     metric_dict[pfx] = metric_val
+        
+        if "ground_truth" in reward_extra_infos_dict and "pred_acc" in reward_extra_infos_dict:
+            import pandas as pd
+            ground_truth_list = reward_extra_infos_dict["ground_truth"]
+            pred_acc_list = reward_extra_infos_dict["pred_acc"]
+            assert len(ground_truth_list) == len(pred_acc_list)
+            df = pd.DataFrame({
+                'ground_truth': ground_truth_list,
+                'pred_acc': pred_acc_list
+            })
+            ground_truth_stats = (
+                df
+                .groupby('ground_truth', observed=True)['pred_acc']
+                .agg(['mean', 'count'])
+                .reset_index()
+            )
+            ground_truth_bins_metrics = {}
+            for _, row in ground_truth_stats.iterrows():
+                label_idx = int(row['ground_truth'])
+                ground_truth_bins_metrics[f"val-core/all_label{label_idx}({int(row['count'])})/acc"] = float(f"{row['mean']:.4g}")
+            metric_dict.update(ground_truth_bins_metrics)
 
         return metric_dict
 
@@ -1102,6 +1123,10 @@ class RayPPOTrainer:
                         print(f"{list(reward_extra_infos_dict.keys())=}")
                         if reward_extra_infos_dict:
                             batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
+                            # multi_acc_rate_list = [item["multi_acc_rate"] for item in batch.non_tensor_batch["extra_info"]]
+                            # ground_truth_list = reward_extra_infos_dict["ground_truth"]
+                            # pred_acc_list = reward_extra_infos_dict["pred_acc"]
+                            # assert len(multi_acc_rate_list) == len(ground_truth_list) == len(pred_acc_list)
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:
@@ -1187,16 +1212,16 @@ class RayPPOTrainer:
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
-
-                progress_bar.update(1)
-                self.global_steps += 1
-
+                
                 if self.config.track_data_path != '':
                     if not os.path.exists(self.config.track_data_path):
                         os.makedirs(self.config.track_data_path)
                     track_batch(batch, f"{self.config.track_data_path}/train_data.jsonl", 
                             self.tokenizer, step=self.global_steps)
                 
+                progress_bar.update(1)
+                self.global_steps += 1
+
                 if is_last_step:
                     pprint(f"Final validation metrics: {last_val_metrics}")
                     progress_bar.close()
