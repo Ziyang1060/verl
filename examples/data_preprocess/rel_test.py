@@ -4,6 +4,7 @@ from datasets import Dataset
 import pandas as pd
 
 dataset_path = sys.argv[1]
+data_source = "rel_tiny_longtail" # "rel_tiny_random" "rel_tiny_uniform" "rel_tiny_longtail"
 
 # PE v3+
 system_prompt = "You are a helpful assistant."
@@ -33,8 +34,6 @@ print(len(train_dataset))
 # print(train_dataset[0])
 
 train_dataset = Dataset.from_list(train_dataset)
-
-data_source = "relevance_RL_label"
 
 def make_map_fn(split):
     def process_fn(example, idx):

@@ -750,6 +750,8 @@ class RayPPOTrainer:
             import pandas as pd
             ground_truth_list = reward_extra_infos_dict["ground_truth"]
             pred_acc_list = reward_extra_infos_dict["pred_acc"]
+            test_batch.non_tensor_batch["ground_truth"] = ground_truth_list
+            test_batch.non_tensor_batch["pred_acc"] = pred_acc_list
             assert len(ground_truth_list) == len(pred_acc_list)
             df = pd.DataFrame({
                 'ground_truth': ground_truth_list,
@@ -766,6 +768,24 @@ class RayPPOTrainer:
                 label_idx = int(row['ground_truth'])
                 ground_truth_bins_metrics[f"val-core/all_label{label_idx}({int(row['count'])})/acc"] = float(f"{row['mean']:.4g}")
             metric_dict.update(ground_truth_bins_metrics)
+
+        # 需要保证 len(test_batch) % 总卡数 == 0，才能完成推理
+        # old_log_prob = self.actor_rollout_wg.compute_log_prob(test_batch)
+        # entropys = old_log_prob.batch["entropys"]
+        # response_masks = test_batch.batch["response_mask"]
+        # loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
+        # entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
+        # old_log_prob_metrics = {"val-core/entropy_loss": entropy_loss.detach().item()}
+        # metric_dict.update(old_log_prob_metrics)
+        # old_log_prob.batch["forward_entropys"] = old_log_prob.batch["entropys"]
+        # old_log_prob.batch.pop("entropys")
+        # test_batch = test_batch.union(old_log_prob)
+
+        if self.config.track_data_path != '':
+            track_data_path = self.config.track_data_path.replace("train_sample", "val_sample")
+            if not os.path.exists(track_data_path):
+                os.makedirs(track_data_path)
+            track_batch(test_batch, f"{track_data_path}/val_data.jsonl", self.tokenizer, step=self.global_steps)
 
         return metric_dict
 
@@ -1071,6 +1091,7 @@ class RayPPOTrainer:
                         entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
                         old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
                         metrics.update(old_log_prob_metrics)
+                        old_log_prob.batch["forward_entropys"] = entropys
                         old_log_prob.batch.pop("entropys")
                         batch = batch.union(old_log_prob)
 

@@ -37,14 +37,14 @@ Correct answer: {answer}
 Judgement:
 '''
 
-RESPONSE_PATTERN = r'^<think>(.*?)</think>\s*<answer>(.*?)</answer>$'
+RESPONSE_PATTERN = r'<think>(.*?)</think>\s*<answer>(.*?)</answer>'
 
 
 def check_response_format(response):
     format_acc = 0
     think_cot = ""
     answer_pred = -100
-    m = re.search(RESPONSE_PATTERN, response, flags=re.DOTALL)
+    m = re.search(RESPONSE_PATTERN, response, flags=re.DOTALL | re.MULTILINE)
     try:
         if m:
             think_cot = m.group(1)
@@ -110,7 +110,8 @@ def check_reasoning_consistency(think_cot, answer_pred):
 
 
 def compute_score(predict_str, ground_truth):
-
+    # print(f"{predict_str=}")
+    # print(f"{ground_truth=}")
     format_acc, think_cot, answer_pred = check_response_format(predict_str)
     reasoning_consistency_acc, is_call_verifier = check_reasoning_consistency(think_cot, answer_pred)
     reasoning_consistency_acc = int(reasoning_consistency_acc)
@@ -121,11 +122,12 @@ def compute_score(predict_str, ground_truth):
     if answer_pred == ground_truth:
         pred_acc = 1
 
-    # format_reward = 0.1 if format_acc else 0.0
-    consistency_reward = 1.0 if reasoning_consistency_acc else 0.2
+    format_reward = 1.0 if format_acc else 0.0
+    consistency_reward = 1.0 if reasoning_consistency_acc else 0.0
     answer_reward = 1.0 if pred_acc else 0.0
 
-    final_reward = consistency_reward * answer_reward
+    # final_reward = consistency_reward + answer_reward + format_reward
+    final_reward = answer_reward * (1 + 0.5 * consistency_reward) + 0.5 * format_reward
     return {
         "score": final_reward,
         "pred": answer_pred,

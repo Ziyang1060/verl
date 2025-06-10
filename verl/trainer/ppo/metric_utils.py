@@ -102,6 +102,11 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
     sequence_score = batch.batch["token_level_scores"].sum(-1)
     sequence_reward = batch.batch["token_level_rewards"].sum(-1)
 
+    sequence_pred_acc = batch.non_tensor_batch["pred_acc"]
+    sequence_format_acc = batch.non_tensor_batch["format_acc"]
+    sequence_consistency_acc = batch.non_tensor_batch["consistency_acc"]
+    sequence_is_call_verifier = batch.non_tensor_batch["is_call_verifier"]
+
     advantages = batch.batch["advantages"]
     returns = batch.batch["returns"]
 
@@ -142,6 +147,11 @@ def compute_data_metrics(batch: DataProto, use_critic: bool = True) -> Dict[str,
         "critic/returns/mean": torch.mean(valid_returns).detach().item(),
         "critic/returns/max": torch.max(valid_returns).detach().item(),
         "critic/returns/min": torch.min(valid_returns).detach().item(),
+        # extra_info
+        "critic/pred_acc/mean": np.mean(sequence_pred_acc),
+        "critic/format_acc/mean": np.mean(sequence_format_acc),
+        "critic/consistency_acc/mean": np.mean(sequence_consistency_acc),
+        "critic/is_call_verifier/mean": np.mean(sequence_is_call_verifier),
         **(
             {
                 # values
