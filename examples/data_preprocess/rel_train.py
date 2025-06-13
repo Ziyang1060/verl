@@ -45,18 +45,23 @@ def make_map_fn(split):
                 "course_stage": course_stage,
                 "note_id": example["note_id"],
                 "inputs_length": example["inputs_length"],
-                "multi_acc_rate": example["multi_acc_rate"],
-                "binary_acc_rate": example["binary_acc_rate"]
+                "multi_acc_rate": example.get("multi_acc_rate", -1),
+                "binary_acc_rate": example.get("binary_acc_rate", -1)
             },
         }
-        example.pop("raw_query")
-        example.pop("note")
-        example.pop("note_id")
-        example.pop("inputs_length")
-        example.pop("q_tax")
-        example.pop("n_tax")
-        example.pop("multi_acc_rate")
-        example.pop("binary_acc_rate")
+        example.pop("raw_query", -1)
+        example.pop("note", -1)
+        example.pop("note_id", -1)
+        example.pop("inputs_length", -1)
+        example.pop("q_tax", -1)
+        example.pop("n_tax", -1)
+        example.pop("multi_acc_rate", -1)
+        example.pop("binary_acc_rate", -1)
+        example.pop("prompts", -1)
+        example.pop("response_api", -1)
+        example.pop("pred", -1)
+        example.pop("response", -1)
+        example.pop("rejection_sampling", -1)
         return data
 
     return process_fn

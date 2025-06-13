@@ -37,6 +37,8 @@ from omegaconf import OmegaConf, open_dict
 from torch.utils.data import Dataset, Sampler
 from torchdata.stateful_dataloader import StatefulDataLoader
 from tqdm import tqdm
+from collections import Counter
+import pandas as pd
 
 from verl import DataProto
 from verl.protocol import pad_dataproto_to_divisor, unpad_dataproto
@@ -747,15 +749,16 @@ class RayPPOTrainer:
                     metric_dict[pfx] = metric_val
         
         if "ground_truth" in reward_extra_infos_dict and "pred_acc" in reward_extra_infos_dict:
-            import pandas as pd
             ground_truth_list = reward_extra_infos_dict["ground_truth"]
+            pred_list = reward_extra_infos_dict["pred"]
             pred_acc_list = reward_extra_infos_dict["pred_acc"]
             test_batch.non_tensor_batch["ground_truth"] = ground_truth_list
             test_batch.non_tensor_batch["pred_acc"] = pred_acc_list
             assert len(ground_truth_list) == len(pred_acc_list)
             df = pd.DataFrame({
                 'ground_truth': ground_truth_list,
-                'pred_acc': pred_acc_list
+                'pred': pred_list,
+                'pred_acc': pred_acc_list,
             })
             ground_truth_stats = (
                 df
@@ -763,11 +766,36 @@ class RayPPOTrainer:
                 .agg(['mean', 'count'])
                 .reset_index()
             )
+            pred_stats = (
+                df
+                .groupby('pred', observed=True)['pred_acc']
+                .agg(['mean', 'count'])
+                .reset_index()
+            )
             ground_truth_bins_metrics = {}
             for _, row in ground_truth_stats.iterrows():
                 label_idx = int(row['ground_truth'])
-                ground_truth_bins_metrics[f"val-core/all_label{label_idx}({int(row['count'])})/acc"] = float(f"{row['mean']:.4g}")
+                ground_truth_bins_metrics[f"val-aux/gt_label_{label_idx}_({int(row['count'])})/Recall"] = float(f"{row['mean']:.4g}")
             metric_dict.update(ground_truth_bins_metrics)
+
+            pred_bins_metrics = {}
+            for _, row in pred_stats.iterrows():
+                label_idx = int(row['pred'])
+                pred_bins_metrics[f"val-aux/pred_label_{label_idx}_({int(row['count'])})/Precision"] = float(f"{row['mean']:.4g}")
+            metric_dict.update(pred_bins_metrics)
+
+            f1_metrics = {}
+            for label_idx in [-1,0,1,2,3]:
+                a = 1
+                b = 1
+                for key in metric_dict:
+                    if f"label_{label_idx}" in key:
+                        if "Recall" in key:
+                            a = metric_dict[key]
+                        elif "Precision" in key:
+                            b = metric_dict[key]
+                f1_metrics[f"val-core/label_{label_idx}_F1"] = round(2 * a * b / (a + b), 4)
+            metric_dict.update(f1_metrics)
 
         # 需要保证 len(test_batch) % 总卡数 == 0，才能完成推理
         # old_log_prob = self.actor_rollout_wg.compute_log_prob(test_batch)
@@ -1144,10 +1172,6 @@ class RayPPOTrainer:
                         print(f"{list(reward_extra_infos_dict.keys())=}")
                         if reward_extra_infos_dict:
                             batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
-                            # multi_acc_rate_list = [item["multi_acc_rate"] for item in batch.non_tensor_batch["extra_info"]]
-                            # ground_truth_list = reward_extra_infos_dict["ground_truth"]
-                            # pred_acc_list = reward_extra_infos_dict["pred_acc"]
-                            # assert len(multi_acc_rate_list) == len(ground_truth_list) == len(pred_acc_list)
 
                         # compute rewards. apply_kl_penalty if available
                         if self.config.algorithm.use_kl_in_reward:
@@ -1171,6 +1195,57 @@ class RayPPOTrainer:
                             use_pf_ppo=self.config.algorithm.use_pf_ppo,
                             pf_ppo_reweight_method=self.config.algorithm.pf_ppo.reweight_method,
                             pf_ppo_weight_pow=self.config.algorithm.pf_ppo.weight_pow,
+                        )
+
+                        label2weight={
+                            -1: 1,
+                            0: 1.2,
+                            1: 1,
+                            2: 1,
+                            3: 1.2,
+                        }
+                        labels = batch.non_tensor_batch["ground_truth"].tolist()
+                        weights_list = [label2weight[label] for label in labels]
+                        device = batch.batch["advantages"].device
+                        dtype = batch.batch["advantages"].dtype
+                        weights_tensor = torch.tensor(weights_list, device=device, dtype=dtype)
+                        batch.batch["advantages"] = batch.batch["advantages"] * weights_tensor.unsqueeze(1)
+                        label_counts = Counter(labels)
+                        total_labels = len(labels)
+                        df_ratio = pd.DataFrame({
+                            "prompt_id": batch.non_tensor_batch["uid"],
+                            "pred_acc": batch.non_tensor_batch["pred_acc"],
+                            "ground_truth": batch.non_tensor_batch["ground_truth"],
+                        })
+                        alist = []
+                        valid_label_1_2 = 0
+                        valid_label_0_3 = 0
+                        for name, data in df_ratio.groupby(["prompt_id"]):
+                            alist.append(sum(data["pred_acc"]))
+                            if alist[-1] > 0 and alist[-1] < 8:
+                                # valid
+                                if data["ground_truth"].iloc[0] == 1 or data["ground_truth"].iloc[0]== 2:
+                                    valid_label_1_2 += 1
+                                elif data["ground_truth"].iloc[0]== 0 or data["ground_truth"].iloc[0] == 3:
+                                    valid_label_0_3 += 1
+                        ratio_counts = Counter(alist)
+                        right_ratio = round(ratio_counts.get(self.config.actor_rollout_ref.rollout.n) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
+                        wrong_ratio = round(ratio_counts.get(0) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
+                        valid_ratio = round(1 - right_ratio - wrong_ratio, 4)
+                        valid_cnt = df_ratio.shape[0] / self.config.actor_rollout_ref.rollout.n  - ratio_counts.get(self.config.actor_rollout_ref.rollout.n) - ratio_counts.get(0)
+                        metrics.update(
+                            {
+                                "batch/label_-1_ratio": label_counts.get(-1, 0) / total_labels,
+                                "batch/label_0_ratio": label_counts.get(0, 0) / total_labels,
+                                "batch/label_1_ratio": label_counts.get(1, 0) / total_labels,
+                                "batch/label_2_ratio": label_counts.get(2, 0) / total_labels,
+                                "batch/label_3_ratio": label_counts.get(3, 0) / total_labels,
+                                "batch/all_right_ratio": right_ratio,
+                                "batch/all_wrong_ratio": wrong_ratio,
+                                "batch/valid_ratio": valid_ratio,
+                                "batch/valid_ratio_1_2": round(valid_label_1_2 / valid_cnt, 4) if valid_cnt > 0 else 0,
+                                "batch/valid_ratio_0_3": round(valid_label_0_3 / valid_cnt, 4) if valid_cnt > 0 else 0,
+                            }
                         )
 
                     # update critic

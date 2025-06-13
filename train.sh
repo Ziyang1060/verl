@@ -22,21 +22,22 @@ export WANDB_API_KEY="0e112ac0ae8b584f4da8d11a5443a11f58c002a0"
 
 
 export project_name='RankRL'
-export exp_name='Qwen2p5-rl-step1800-rl_no_hard_no_kl'
+export exp_name='Qwen2p5_step2400-rl-v2_random_kl'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-32B-cpt-sft-v2-rl-v1_no_hard/global_step_1800/hf_model"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-32B-cpt-sft-v2-rl-v1_no_hard/global_step_2400/hf_model"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
 
 all_course_filter_easy_hard="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_2w6.train.parquet"
 all_course_filter_hard="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v2_2w9.train.parquet"
-train_files="['$all_course_filter_hard']"
+rl_v2="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v2_5w_random.train.parquet"
+train_files="['$rl_v2']"
 
 adv_estimator=grpo
 
-total_epochs=10
+total_epochs=3
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
@@ -94,9 +95,9 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --actor_rollout_ref.actor.optim.lr 1e-6 \
+  --actor_rollout_ref.actor.optim.lr 8e-7 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps 20 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio 0.03 \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
   --actor_rollout_ref.actor.fsdp_config.param_offload ${offload} \
   --actor_rollout_ref.actor.fsdp_config.optimizer_offload ${offload} \
@@ -104,7 +105,7 @@ bash scripts/run_dist.sh \
   --actor_rollout_ref.actor.grad_clip 1.0 \
   --actor_rollout_ref.actor.loss_agg_mode ${loss_agg_mode} \
   --actor_rollout_ref.actor.ulysses_sequence_parallel_size 1 \
-  --actor_rollout_ref.rollout.gpu_memory_utilization 0.45 \
+  --actor_rollout_ref.rollout.gpu_memory_utilization 0.5 \
   --actor_rollout_ref.rollout.tensor_model_parallel_size 4 \
   --actor_rollout_ref.rollout.enable_chunked_prefill True \
   --actor_rollout_ref.rollout.max_num_batched_tokens $((max_prompt_length + max_response_length)) \
@@ -115,7 +116,7 @@ bash scripts/run_dist.sh \
   --actor_rollout_ref.rollout.val_kwargs.top_p 0.95 \
   --actor_rollout_ref.rollout.val_kwargs.top_k ${top_k} \
   --actor_rollout_ref.rollout.val_kwargs.do_sample True \
-  --actor_rollout_ref.rollout.val_kwargs.n 4 \
+  --actor_rollout_ref.rollout.val_kwargs.n 1 \
   --actor_rollout_ref.ref.fsdp_config.param_offload ${offload} \
   --actor_rollout_ref.ref.ulysses_sequence_parallel_size 1 \
   --actor_rollout_ref.actor.fsdp_config.fsdp_size -1 \
@@ -124,7 +125,7 @@ bash scripts/run_dist.sh \
   --trainer.experiment_name ${exp_name} \
   --trainer.val_before_train True \
   --trainer.test_freq 100 \
-  --trainer.save_freq 100 \
+  --trainer.save_freq 300 \
   --trainer.total_epochs ${total_epochs} \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
   --trainer.resume_mode "disable" \
@@ -137,5 +138,5 @@ bash scripts/run_dist.sh \
 
 # python scripts/model_merger.py merge \
 #     --backend fsdp \
-#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-32B-cpt-sft-v2-rl-v1_no_hard/global_step_1800/actor \
-#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-32B-cpt-sft-v2-rl-v1_no_hard/global_step_1800/hf_model
+#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-rl-step1800-rl_no_hard_no_kl/global_step_1400/actor \
+#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-rl-step1800-rl_no_hard_no_kl/global_step_1400/hf_model

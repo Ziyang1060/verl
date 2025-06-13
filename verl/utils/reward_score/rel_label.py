@@ -37,7 +37,7 @@ Correct answer: {answer}
 Judgement:
 '''
 
-RESPONSE_PATTERN = r'<think>(.*?)</think>\s*<answer>(.*?)</answer>'
+RESPONSE_PATTERN = r'^<think>(.*?)</think>\s*<answer>(.*?)</answer>$'
 
 
 def check_response_format(response):

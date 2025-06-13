@@ -25,9 +25,12 @@ def data2json(batch: DataProto, step: int, tokenizer) -> List:
         if "forward_entropys" in batch.batch:
             data["entropys"] = batch.batch['forward_entropys'][idx][response_mask == 1].tolist()
         if "advantages" in batch.batch:
-            data["token_rewards"] = batch.batch['advantages'][idx][response_mask == 1].tolist()
-            data['score'] = batch.batch['token_level_scores'][idx][response_mask == 1][-1].tolist()
-            data['reward'] = batch.batch['token_level_rewards'][idx][response_mask == 1][-1].tolist()
+            data["token_level_advantages"] = batch.batch['advantages'][idx][response_mask == 1].tolist()
+            data['token_level_scores'] = batch.batch['token_level_scores'][idx][response_mask == 1].tolist()
+            data['token_level_rewards'] = batch.batch['token_level_rewards'][idx][response_mask == 1].tolist()
+            data["advantage"] = batch.batch['advantages'][idx][response_mask == 1].tolist()[-1]
+            data['score'] = batch.batch['token_level_scores'][idx][response_mask == 1].tolist()[-1]
+            data['reward'] = batch.batch['token_level_rewards'][idx][response_mask == 1].tolist()[-1]
         if "ground_truth" in batch.non_tensor_batch and "pred_acc" in batch.non_tensor_batch:
             data['ground_truth'] = int(batch.non_tensor_batch["ground_truth"][idx])
             data['pred_acc'] =  int(batch.non_tensor_batch["pred_acc"][idx])

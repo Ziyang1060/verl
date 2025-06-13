@@ -28,7 +28,7 @@ from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
-from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, kl_penalty
+from verl.trainer.ppo.core_algos import agg_loss, compute_policy_loss, kl_penalty, compute_policy_loss_cov
 from verl.utils.debug import GPUMemoryLogger
 from verl.utils.device import get_device_name, get_torch_device, is_cuda_available, is_npu_available
 from verl.utils.fsdp_utils import FSDPModule, fsdp2_clip_grad_norm_
@@ -386,7 +386,20 @@ class DataParallelPPOActor(BasePPOActor):
                         calculate_entropy = True
                     entropy, log_prob = self._forward_micro_batch(micro_batch=data, temperature=temperature, calculate_entropy=calculate_entropy)
 
-                    pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = compute_policy_loss(
+                    # pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower = compute_policy_loss(
+                    #     old_log_prob=old_log_prob,
+                    #     log_prob=log_prob,
+                    #     advantages=advantages,
+                    #     response_mask=response_mask,
+                    #     cliprange=clip_ratio,
+                    #     cliprange_low=clip_ratio_low,
+                    #     cliprange_high=clip_ratio_high,
+                    #     clip_ratio_c=clip_ratio_c,
+                    #     loss_agg_mode=loss_agg_mode,
+                    # )
+                    # cov_t1_sample, cov_t2_token = torch.tensor(0), torch.tensor(0)
+
+                    pg_loss, pg_clipfrac, ppo_kl, pg_clipfrac_lower, cov_t1_sample, cov_t2_token = compute_policy_loss_cov(
                         old_log_prob=old_log_prob,
                         log_prob=log_prob,
                         advantages=advantages,
@@ -428,6 +441,8 @@ class DataParallelPPOActor(BasePPOActor):
                         "actor/pg_clipfrac": pg_clipfrac.detach().item(),
                         "actor/ppo_kl": ppo_kl.detach().item(),
                         "actor/pg_clipfrac_lower": pg_clipfrac_lower.detach().item(),
+                        "actor/cov_t1_sample": cov_t1_sample.detach().item(),
+                        "actor/cov_t2_token": cov_t2_token.detach().item(),
                     }
                     append_to_dict(metrics, data)
 
