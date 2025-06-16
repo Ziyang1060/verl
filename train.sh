@@ -22,10 +22,10 @@ export WANDB_API_KEY="0e112ac0ae8b584f4da8d11a5443a11f58c002a0"
 
 
 export project_name='RankRL'
-export exp_name='Qwen2p5_step2400-rl-v2_random_kl'
+export exp_name='Qwen2p5_step2400_step1200-rl-v2_random_no_kl_n16_repeat_penalty'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-32B-cpt-sft-v2-rl-v1_no_hard/global_step_2400/hf_model"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5_step2400-rl-v2_random_kl/global_step_1200/hf_model"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -37,7 +37,7 @@ train_files="['$rl_v2']"
 
 adv_estimator=grpo
 
-total_epochs=3
+total_epochs=1
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
@@ -49,7 +49,7 @@ max_response_length=$((1024 * 2))
 
 loss_agg_mode="seq-mean-token-mean" # 每个序列内先归一化，每个序列等权重，def agg_loss
 
-n_resp_per_prompt=8
+n_resp_per_prompt=16
 train_prompt_bsz=40
 train_prompt_mini_bsz=40
 
@@ -61,6 +61,7 @@ clip_ratio_high=0.28
 temperature=1.0
 top_p=1.0
 top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
+repetition_penalty=1.2
 
 # Performance Related Parameter
 use_dynamic_bsz=True
@@ -95,7 +96,7 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --actor_rollout_ref.actor.optim.lr 8e-7 \
+  --actor_rollout_ref.actor.optim.lr 5e-7 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
   --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio 0.03 \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
@@ -112,9 +113,11 @@ bash scripts/run_dist.sh \
   --actor_rollout_ref.rollout.temperature ${temperature} \
   --actor_rollout_ref.rollout.top_p ${top_p} \
   --actor_rollout_ref.rollout.top_k ${top_k} \
+  --actor_rollout_ref.rollout.repetition_penalty ${repetition_penalty} \
   --actor_rollout_ref.rollout.val_kwargs.temperature 0.6 \
   --actor_rollout_ref.rollout.val_kwargs.top_p 0.95 \
   --actor_rollout_ref.rollout.val_kwargs.top_k ${top_k} \
+  --actor_rollout_ref.rollout.val_kwargs.repetition_penalty ${repetition_penalty}  \
   --actor_rollout_ref.rollout.val_kwargs.do_sample True \
   --actor_rollout_ref.rollout.val_kwargs.n 1 \
   --actor_rollout_ref.ref.fsdp_config.param_offload ${offload} \
@@ -124,8 +127,8 @@ bash scripts/run_dist.sh \
   --trainer.project_name ${project_name} \
   --trainer.experiment_name ${exp_name} \
   --trainer.val_before_train True \
-  --trainer.test_freq 100 \
-  --trainer.save_freq 300 \
+  --trainer.test_freq 50 \
+  --trainer.save_freq 50 \
   --trainer.total_epochs ${total_epochs} \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
   --trainer.resume_mode "disable" \

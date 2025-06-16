@@ -781,7 +781,7 @@ class RayPPOTrainer:
             pred_bins_metrics = {}
             for _, row in pred_stats.iterrows():
                 label_idx = int(row['pred'])
-                pred_bins_metrics[f"val-aux/pred_label_{label_idx}_({int(row['count'])})/Precision"] = float(f"{row['mean']:.4g}")
+                pred_bins_metrics[f"val-aux/pred_label_{label_idx}/Precision"] = float(f"{row['mean']:.4g}")
             metric_dict.update(pred_bins_metrics)
 
             f1_metrics = {}
