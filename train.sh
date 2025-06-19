@@ -1,31 +1,39 @@
 # set -x
 # (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train.sh &)
+
 ray stop --force
 ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
-
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.2.255"
+export MASTER_ADDR="10.148.18.58"
+export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
 
 export http_proxy=10.140.24.177:3128
 export https_proxy=10.140.24.177:3128
+export HF_ENDPOINT=https://hf-mirror.com
+export WANDB_API_KEY="0e112ac0ae8b584f4da8d11a5443a11f58c002a0"
+
+# If you are using vllm<=0.6.3, you might need to set the following environment variable to avoid bugs:
+export VLLM_ATTENTION_BACKEND="XFORMERS" 
+export GLOO_SOCKET_IFNAME="eth0"
+
 pip config set global.trusted-host "pypi.devops.xiaohongshu.com" && pip config set global.index-url "http://pypi.devops.xiaohongshu.com/simple"
+# USE_MEGATRON=0 bash scripts/install_vllm_sglang_mcore.sh # 使用最新的 verl 依赖 for qwen3 ，vllm 0.8.5.post1
 pip install "ray[default,train,tune,serve]"
 pip install torchdata
 pip install wandb
 pip install openai
 pip install peft
-export WANDB_API_KEY="0e112ac0ae8b584f4da8d11a5443a11f58c002a0"
 
 
 export project_name='RankRL'
-export exp_name='Qwen2p5_step2400_step1200-rl-v2_random_no_kl_n16_repeat_penalty'
+export exp_name='RedOne-sft-rl-v2_random_no_kl'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5_step2400-rl-v2_random_kl/global_step_1200/hf_model"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/redone_32B-rel_sft_v2"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -37,7 +45,7 @@ train_files="['$rl_v2']"
 
 adv_estimator=grpo
 
-total_epochs=1
+total_epochs=10
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
@@ -49,7 +57,7 @@ max_response_length=$((1024 * 2))
 
 loss_agg_mode="seq-mean-token-mean" # 每个序列内先归一化，每个序列等权重，def agg_loss
 
-n_resp_per_prompt=16
+n_resp_per_prompt=8
 train_prompt_bsz=40
 train_prompt_mini_bsz=40
 
@@ -61,7 +69,7 @@ clip_ratio_high=0.28
 temperature=1.0
 top_p=1.0
 top_k=-1 # 0 for HF rollout, -1 for vLLM rollout
-repetition_penalty=1.2
+repetition_penalty=1.0
 
 # Performance Related Parameter
 use_dynamic_bsz=True
@@ -96,9 +104,10 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --actor_rollout_ref.actor.optim.lr 5e-7 \
+  --actor_rollout_ref.actor.optim.lr 1e-6 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio 0.03 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps 100 \
+  --actor_rollout_ref.actor.optim.num_cycles $(( total_epochs / 2 )) \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
   --actor_rollout_ref.actor.fsdp_config.param_offload ${offload} \
   --actor_rollout_ref.actor.fsdp_config.optimizer_offload ${offload} \
@@ -127,8 +136,8 @@ bash scripts/run_dist.sh \
   --trainer.project_name ${project_name} \
   --trainer.experiment_name ${exp_name} \
   --trainer.val_before_train True \
-  --trainer.test_freq 50 \
-  --trainer.save_freq 50 \
+  --trainer.test_freq 100 \
+  --trainer.save_freq 300 \
   --trainer.total_epochs ${total_epochs} \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
   --trainer.resume_mode "disable" \
@@ -141,5 +150,5 @@ bash scripts/run_dist.sh \
 
 # python scripts/model_merger.py merge \
 #     --backend fsdp \
-#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-rl-step1800-rl_no_hard_no_kl/global_step_1400/actor \
-#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5-rl-step1800-rl_no_hard_no_kl/global_step_1400/hf_model
+#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5_step2400_step1200-rl-v2_random_no_kl_n16_repeat_penalty/global_step_1000/actor \
+#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/Qwen2p5_step2400_step1200-rl-v2_random_no_kl_n16_repeat_penalty/global_step_1000/hf_model

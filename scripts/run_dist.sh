@@ -101,7 +101,8 @@ cmd_args+=("${other_args[@]}")
 which python
 set -x
 
-if [ ${RANK} == 0 ]; then
+# if [ ${RANK} == 0 ]; then
+if [ `hostname -I | awk '{print $1}'` ==  ${MASTER_ADDR} ]; then
   # 启动ray集群head节点
   ray start --head --port=${RAY_MASTER_PORT} --dashboard-host 0.0.0.0 ${ray_start_args[@]}
   while true; do
