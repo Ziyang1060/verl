@@ -1229,10 +1229,10 @@ class RayPPOTrainer:
                                 elif data["ground_truth"].iloc[0]== 0 or data["ground_truth"].iloc[0] == 3:
                                     valid_label_0_3 += 1
                         ratio_counts = Counter(alist)
-                        right_ratio = round(ratio_counts.get(self.config.actor_rollout_ref.rollout.n) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
-                        wrong_ratio = round(ratio_counts.get(0) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
+                        right_ratio = round(ratio_counts.get(self.config.actor_rollout_ref.rollout.n, 0) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
+                        wrong_ratio = round(ratio_counts.get(0, 0) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
                         valid_ratio = round(1 - right_ratio - wrong_ratio, 4)
-                        valid_cnt = df_ratio.shape[0] / self.config.actor_rollout_ref.rollout.n  - ratio_counts.get(self.config.actor_rollout_ref.rollout.n) - ratio_counts.get(0)
+                        valid_cnt = df_ratio.shape[0] / self.config.actor_rollout_ref.rollout.n  - ratio_counts.get(self.config.actor_rollout_ref.rollout.n, 0) - ratio_counts.get(0, 0)
                         metrics.update(
                             {
                                 "batch/label_-1_ratio": label_counts.get(-1, 0) / total_labels,
