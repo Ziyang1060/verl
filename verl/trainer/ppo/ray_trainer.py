@@ -1395,9 +1395,6 @@ class RayPPOTrainer:
 
                 timing_raw = defaultdict(float)  # clear timing
                 metrics["train/num_gen_batches"] = num_gen_batches
-                batch = None
-                num_prompt_in_batch = 0
-                num_gen_batches = 0
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
@@ -1408,6 +1405,10 @@ class RayPPOTrainer:
                     track_batch(batch, f"{self.config.track_data_path}/train_data.jsonl", 
                             self.tokenizer, step=self.global_steps)
                 
+                batch = None
+                num_prompt_in_batch = 0
+                num_gen_batches = 0
+
                 progress_bar.update(1)
                 self.global_steps += 1
 
