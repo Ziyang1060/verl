@@ -229,6 +229,10 @@ custom_reward_function:
   name: compute_score
 
 algorithm:
+  filter_groups:
+    enable: False # We try to avoid forgetting to set enable
+    metric: pred_acc # acc / score / seq_reward / seq_final_reward / ...
+    max_num_gen_batches: 0 # Non-positive values mean no upper lim
   gamma: 1.0
   lam: 1.0
   adv_estimator: gae

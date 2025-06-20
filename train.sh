@@ -6,7 +6,7 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.18.58"
+export MASTER_ADDR="10.148.2.255"
 export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
@@ -30,10 +30,10 @@ pip install peft
 
 
 export project_name='RankRL'
-export exp_name='RedOne-sft-rl-v2_random_no_kl'
+export exp_name='Qwen2p5-cft-sft-rl-v2_random_no_kl'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/redone_32B-rel_sft_v2"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/qwen2.5_32B_cpt-rel_sft_v1_14w_sft_v2_4w_0530"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -45,7 +45,9 @@ train_files="['$rl_v2']"
 
 adv_estimator=grpo
 
-total_epochs=10
+total_epochs=15
+dynamic_filtering=True
+num_cycles=1.5 # total_epochs * 0.4 / 6
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
@@ -89,6 +91,7 @@ bash scripts/run_dist.sh \
   --actor_rollout_ref.rollout.n ${n_resp_per_prompt} \
   --algorithm.adv_estimator ${adv_estimator} \
   --algorithm.kl_ctrl.kl_coef ${kl_coef} \
+  --algorithm.filter_groups.enable ${dynamic_filtering} \
   --actor_rollout_ref.actor.use_kl_loss ${use_kl_loss} \
   --actor_rollout_ref.actor.kl_loss_coef ${kl_loss_coef} \
   --actor_rollout_ref.actor.clip_ratio_low ${clip_ratio_low} \
@@ -104,10 +107,10 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --actor_rollout_ref.actor.optim.lr 1e-6 \
+  --actor_rollout_ref.actor.optim.lr 8e-7 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
   --actor_rollout_ref.actor.optim.lr_warmup_steps 100 \
-  --actor_rollout_ref.actor.optim.num_cycles $(( total_epochs / 2 )) \
+  --actor_rollout_ref.actor.optim.num_cycles ${num_cycles} \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
   --actor_rollout_ref.actor.fsdp_config.param_offload ${offload} \
   --actor_rollout_ref.actor.fsdp_config.optimizer_offload ${offload} \
@@ -126,7 +129,7 @@ bash scripts/run_dist.sh \
   --actor_rollout_ref.rollout.val_kwargs.temperature 0.6 \
   --actor_rollout_ref.rollout.val_kwargs.top_p 0.95 \
   --actor_rollout_ref.rollout.val_kwargs.top_k ${top_k} \
-  --actor_rollout_ref.rollout.val_kwargs.repetition_penalty ${repetition_penalty}  \
+  --actor_rollout_ref.rollout.val_kwargs.repetition_penalty 1.05  \
   --actor_rollout_ref.rollout.val_kwargs.do_sample True \
   --actor_rollout_ref.rollout.val_kwargs.n 1 \
   --actor_rollout_ref.ref.fsdp_config.param_offload ${offload} \
