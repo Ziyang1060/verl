@@ -1250,23 +1250,6 @@ class RayPPOTrainer:
                             batch = batch.union(values)
 
                     with _timer("adv", timing_raw):
-                        # we combine with rule-based rm
-                        reward_extra_infos_dict: dict[str, list]
-                        if self.config.reward_model.launch_reward_fn_async:
-                            reward_tensor, reward_extra_infos_dict = ray.get(future_reward)
-                        batch.batch["token_level_scores"] = reward_tensor
-
-                        print(f"{list(reward_extra_infos_dict.keys())=}")
-                        if reward_extra_infos_dict:
-                            batch.non_tensor_batch.update({k: np.array(v) for k, v in reward_extra_infos_dict.items()})
-
-                        # compute rewards. apply_kl_penalty if available
-                        if self.config.algorithm.use_kl_in_reward:
-                            batch, kl_metrics = apply_kl_penalty(batch, kl_ctrl=self.kl_ctrl_in_reward, kl_penalty=self.config.algorithm.kl_penalty)
-                            metrics.update(kl_metrics)
-                        else:
-                            batch.batch["token_level_rewards"] = batch.batch["token_level_scores"]
-
                         # compute advantages, executed on the driver process
 
                         norm_adv_by_std_in_grpo = self.config.algorithm.get("norm_adv_by_std_in_grpo", True)  # GRPO adv normalization factor
@@ -1308,7 +1291,7 @@ class RayPPOTrainer:
                         valid_label_1_2 = 0
                         valid_label_0_3 = 0
                         for name, data in df_ratio.groupby(["prompt_id"]):
-                            alist.append(sum(data["pred_acc"]))
+                            alist.append(int(sum(data["pred_acc"])))
                             if alist[-1] > 0 and alist[-1] < self.config.actor_rollout_ref.rollout.n:
                                 # valid
                                 if data["ground_truth"].iloc[0] == 1 or data["ground_truth"].iloc[0]== 2:
@@ -1394,7 +1377,7 @@ class RayPPOTrainer:
                 metrics.update(compute_throughout_metrics(batch=batch, timing_raw=timing_raw, n_gpus=n_gpus))
 
                 timing_raw = defaultdict(float)  # clear timing
-                metrics["train/num_gen_batches"] = num_gen_batches
+                metrics["training/num_gen_batches"] = num_gen_batches
 
                 # TODO: make a canonical logger that supports various backend
                 logger.log(data=metrics, step=self.global_steps)
