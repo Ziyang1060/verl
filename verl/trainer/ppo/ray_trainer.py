@@ -1213,7 +1213,7 @@ class RayPPOTrainer:
                         valid_label_1_2 = 0
                         valid_label_0_3 = 0
                         for name, data in df_ratio.groupby(["prompt_id"]):
-                            alist.append(sum(data["pred_acc"]))
+                            alist.append(int(sum(data["pred_acc"])))
                             if alist[-1] > 0 and alist[-1] < self.config.actor_rollout_ref.rollout.n:
                                 # valid
                                 if data["ground_truth"].iloc[0] == 1 or data["ground_truth"].iloc[0]== 2:
