@@ -6,7 +6,7 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.18.58"
+export MASTER_ADDR="10.148.9.22"
 export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
@@ -30,10 +30,10 @@ pip install peft
 
 
 export project_name='RankRL'
-export exp_name='RedOne-sft-rl-v2_random_no_kl'
+export exp_name='exp1-1_qwen2.5-cft-sft-v2-rl-v1_no_hard_step2400-rl-v2_random_no_kl_no_aw'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/redone_32B-rel_sft_v2"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/qwen2.5-cft-sft-v2-rl-v1_no_hard/global_step_2400/hf_model"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -45,10 +45,7 @@ train_files="['$rl_v2']"
 
 adv_estimator=grpo
 
-total_epochs=10
-
 kl_coef=0.0 # in-reward kl_penalty controller 
-
 use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
 kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
 
@@ -104,10 +101,12 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --actor_rollout_ref.actor.optim.lr 1e-6 \
+  --trainer.total_epochs 3 \
+  --actor_rollout_ref.actor.optim.lr 8e-7 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps 100 \
-  --actor_rollout_ref.actor.optim.num_cycles $(( total_epochs / 2 )) \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps -1 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio 0.03 \
+  --actor_rollout_ref.actor.optim.num_cycles 0.5 \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
   --actor_rollout_ref.actor.fsdp_config.param_offload ${offload} \
   --actor_rollout_ref.actor.fsdp_config.optimizer_offload ${offload} \
@@ -137,8 +136,7 @@ bash scripts/run_dist.sh \
   --trainer.experiment_name ${exp_name} \
   --trainer.val_before_train True \
   --trainer.test_freq 100 \
-  --trainer.save_freq 300 \
-  --trainer.total_epochs ${total_epochs} \
+  --trainer.save_freq 1000 \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
   --trainer.resume_mode "disable" \
   --trainer.resume_from_path "" \
