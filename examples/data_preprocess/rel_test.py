@@ -4,7 +4,7 @@ from datasets import Dataset
 import pandas as pd
 
 dataset_path = sys.argv[1]
-data_source = "rel_tiny_longtail" # "rel_tiny_random" "rel_tiny_uniform" "rel_tiny_longtail"
+data_source = "rel_tiny_knowledge" # "rel_tiny_random" "rel_tiny_uniform" "rel_tiny_longtail" "rel_tiny_knowledge"
 
 # PE v3+
 system_prompt = "You are a helpful assistant."

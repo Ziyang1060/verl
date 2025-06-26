@@ -79,9 +79,11 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
         from . import geo3k
 
         res = geo3k.compute_score(solution_str, ground_truth)
-    elif data_source in ["rel_train", "rel_train_c1", "rel_train_c2", "rel_train_c3", "rel_tiny_random", "rel_tiny_uniform", "rel_tiny_longtail"]:
+    elif data_source in ["rel_train", "rel_train_c1", "rel_train_c2", "rel_train_c3", "rel_tiny_random", "rel_tiny_uniform", "rel_tiny_longtail", "rel_tiny_knowledge"]:
         from . import rel_label
         res = rel_label.compute_score(solution_str, ground_truth)
+        # from . import rel_label_process
+        # res = rel_label_process.compute_score(solution_str, ground_truth)
     else:
         raise NotImplementedError(f"Reward function is not implemented for {data_source=}")
 
