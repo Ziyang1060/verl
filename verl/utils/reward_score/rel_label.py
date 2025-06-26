@@ -93,7 +93,7 @@ def check_reasoning_consistency(think_cot, answer_pred):
 
     # 找到 think 中的最后一个数字
     think_last_number = None
-    think_numbers = re.findall(r"-?\d+", think_cot[-30:])
+    think_numbers = re.findall(r"-?\d+", think_cot[-60:])
     if think_numbers:
         think_last_number = int(think_numbers[-1])
         if think_last_number not in [-1, 0, 1, 2, 3]:
