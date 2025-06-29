@@ -6,7 +6,7 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.254.125"
+export MASTER_ADDR="10.148.2.255"
 export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
@@ -30,10 +30,10 @@ pip install peft
 
 
 export project_name='RankRL'
-export exp_name='exp0-3_qwen2.5-14B-cpt-sft-v2-rl-v1_no_hard_no_wa'
+export exp_name='exp2-1_qwen2.5-cft-sft-rl-v2_random_no_kl-vsRedOne'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/qwen2.5-cpt_14B-rel_sft_v2"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/qwen2.5-cft_32B-rel_sft_v2"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -41,13 +41,13 @@ mkdir -p $CHECKPOINT_SAVE
 all_course_filter_easy_hard="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_2w6_bc0.05_mc0.97.train.parquet"
 all_course_filter_hard="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_2w9_bc0.05.train.parquet"
 rl_v2="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v2_5w_random.train.parquet"
-train_files="['$all_course_filter_hard']"
+train_files="['$rl_v2']"
 
 adv_estimator=grpo
 
 kl_coef=0.0 # in-reward kl_penalty controller 
-use_kl_loss=True # to use kl loss in actor. When used, we are not applying KL in the reward function.
-kl_loss_coef=0.001 # The coefficient of kl loss. Default is 0.001.
+use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
+kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
 
 max_prompt_length=$((1024 * 7))
 max_response_length=$((1024 * 2))
@@ -104,9 +104,9 @@ bash scripts/run_dist.sh \
   --trainer.total_epochs 10 \
   --actor_rollout_ref.actor.optim.lr 1e-6 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps 20 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps 100 \
   --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio 0.03 \
-  --actor_rollout_ref.actor.optim.num_cycles 0.5 \
+  --actor_rollout_ref.actor.optim.num_cycles 5 \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
   --actor_rollout_ref.actor.fsdp_config.param_offload ${offload} \
   --actor_rollout_ref.actor.fsdp_config.optimizer_offload ${offload} \
@@ -136,10 +136,10 @@ bash scripts/run_dist.sh \
   --trainer.experiment_name ${exp_name} \
   --trainer.val_before_train True \
   --trainer.test_freq 100 \
-  --trainer.save_freq 1000 \
+  --trainer.save_freq 500 \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
-  --trainer.resume_mode "disable" \
-  --trainer.resume_from_path "" \
+  --trainer.resume_mode "resume_path" \
+  --trainer.resume_from_path "/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp2-1_qwen2.5-cft-sft-rl-v2_random_no_kl-vsRedOne/global_step_2700" \
   --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 
 
