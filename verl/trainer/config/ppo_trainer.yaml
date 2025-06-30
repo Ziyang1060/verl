@@ -2,7 +2,7 @@ data:
   tokenizer: null
   use_shm: False
   train_files: ~/data/rlhf/gsm8k/train.parquet
-  val_files: ['/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_random_sample_wtax.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_uniform_sample_wtax.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0320_tiny_longtail_sample_wtax.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/knowledge_good_click_note_test_1k.test.parquet']
+  val_files: ['/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_random_sample_wtax.process.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_uniform_sample_wtax.process.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0320_tiny_longtail_sample_wtax.process.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/knowledge_good_click_note_test_1k.process.test.parquet']
   prompt_key: prompt
   reward_fn_key: data_source
   max_prompt_length: 512

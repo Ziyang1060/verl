@@ -25,6 +25,7 @@ from typing import Tuple
 import torch
 from torch import nn
 from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+from tensordict import TensorDict
 
 import verl.utils.torch_functional as verl_F
 from verl import DataProto
@@ -335,13 +336,23 @@ class DataParallelPPOActor(BasePPOActor):
             non_tensor_select_keys = ["multi_modal_inputs"]
             dataloader = data.select(select_keys, non_tensor_select_keys).chunk(num_mini_batches)
         else:
-            dataloader = batch.split(self.config.ppo_mini_batch_size)
+            # dataloader = batch.split(self.config.ppo_mini_batch_size)
+            num_mini_batches = data.batch.batch_size[0] // self.config.ppo_mini_batch_size
+            dataloader = data.select(select_keys).chunk(num_mini_batches)
 
         metrics = {}
         for epoch in range(self.config.ppo_epochs):
             for batch_idx, data in enumerate(dataloader):
                 # split batch into micro_batches
-                mini_batch = data
+                if isinstance(data, DataProto):
+                    if not has_multi_modal_inputs:
+                        # process reward information
+                        mini_batch = TensorDict({**data.batch, **data.non_tensor_batch}, batch_size=[data.batch.batch_size[0]])
+                    else:
+                        mini_batch = data
+                else:
+                    mini_batch = data.batch
+                
                 if has_multi_modal_inputs:
                     self.gradient_accumulation = self.config.ppo_mini_batch_size // self.config.ppo_micro_batch_size_per_gpu
                     num_micro_batches = mini_batch.batch.batch_size[0] // self.config.ppo_micro_batch_size_per_gpu
@@ -369,7 +380,45 @@ class DataParallelPPOActor(BasePPOActor):
                         response_mask = data["loss_mask"][:, -response_length:]
                     else:
                         response_mask = attention_mask[:, -response_length:]
-
+                    
+                    bsz = responses.size(0)
+                    # responses与response_mask [bsz, responses length]
+                    format_acc = data["format_acc"]
+                    init_pred_acc = data["init_pred_acc"]
+                    criteria_pred_acc= data["criteria_pred_acc"]
+                    final_pred_acc = data["final_pred_acc"]
+                    # \\ 59 boxed 79075 x x x 
+                    # 找到所有 "[59, 79075]" 的起始位置
+                    # sep_pos: [bsz, seq_len-1]，sep_pos[i,j]=True 表示 responses[i,j]==59 且 responses[i,j+1]==79075
+                    sep_pos = (responses == 59) & (responses.roll(-1, dims=1) == 79075)
+                    sep_pos = sep_pos[:, :-1]  # 最后一列 roll 后就越界，截掉
+                    # 对每个样本单独处理
+                    for i in range(bsz):
+                        if format_acc[i] == 0:
+                            continue
+                        # 找到分隔符起始索引，应该恰好有 3 个
+                        boundaries = sep_pos[i].nonzero(as_tuple=False).squeeze(1).tolist()
+                        if len(boundaries) < 3:
+                            print(f"batch内第 {i} 个response预期 3 个分隔符，但实际 {len(boundaries)} 个")
+                            continue
+                        # 计算三段文本的 (start, end) 索引区间, 每个索引是\\的索引 【\\, boxed,{,1,}】
+                        s1, s2, s3 = boundaries[0], boundaries[1], boundaries[2]
+                        start1, end1 = 0, s1 + 4 + 1   
+                        start2, end2 = end1, s2 + 4 + 1     
+                        start3, end3 = end2, response_length
+                        # print(f"batch内第 {i} 个response分隔符索引：{boundaries}，分隔符位置：{s1} {s2} {s3}，区间：{start1}-{end1} {start2}-{end2} {start3}-{end3}, 实际token: {responses[i, start1:end1]}, {responses[i, start2:end2]}, {responses[i, start3:end3]}")
+                        # 根据三个阶段的预测正确性，置零相应段
+                        if final_pred_acc[i] == 1:
+                            if init_pred_acc[i] == 0:
+                                response_mask[i, start1:end1] = 0
+                            if criteria_pred_acc[i] == 0:
+                                response_mask[i, start2:end2] = 0
+                        elif final_pred_acc[i] == 0:
+                            if init_pred_acc[i] == 1:
+                                response_mask[i, start1:end1] = 0
+                            if criteria_pred_acc[i] == 1:
+                                response_mask[i, start2:end2] = 0
+                    
                     old_log_prob = data["old_log_probs"]
                     advantages = data["advantages"]
 
@@ -411,6 +460,11 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_agg_mode=loss_agg_mode,
                     )
 
+                    if multi_turn:
+                        response_mask = data["loss_mask"][:, -response_length:]
+                    else:
+                        response_mask = attention_mask[:, -response_length:]
+                        
                     if entropy_coeff != 0:
                         entropy_loss = agg_loss(loss_mat=entropy, loss_mask=response_mask, loss_agg_mode=loss_agg_mode)
 

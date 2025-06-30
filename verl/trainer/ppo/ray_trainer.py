@@ -1191,10 +1191,10 @@ class RayPPOTrainer:
 
                         label2weight={
                             -1: 1,
-                            0: 1.2,
+                            0: 1,
                             1: 1,
                             2: 1,
-                            3: 1.2,
+                            3: 1,
                         }
                         labels = batch.non_tensor_batch["ground_truth"].tolist()
                         weights_list = [label2weight[label] for label in labels]

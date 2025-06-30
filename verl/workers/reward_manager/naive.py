@@ -83,6 +83,7 @@ class NaiveRewardManager:
             else:
                 reward = score
 
+            # process further todo: 在reward_tensor中就设置不同部分的reward，显式惩罚
             reward_tensor[i, valid_response_length - 1] = reward
 
             if data_source not in already_print_data_sources:
