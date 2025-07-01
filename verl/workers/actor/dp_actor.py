@@ -338,6 +338,7 @@ class DataParallelPPOActor(BasePPOActor):
         else:
             # dataloader = batch.split(self.config.ppo_mini_batch_size)
             num_mini_batches = data.batch.batch_size[0] // self.config.ppo_mini_batch_size
+            print(f"{num_mini_batches=}")
             dataloader = data.select(select_keys).chunk(num_mini_batches)
 
         metrics = {}
@@ -377,9 +378,9 @@ class DataParallelPPOActor(BasePPOActor):
                     response_length = responses.size(1)
                     attention_mask = data["attention_mask"]
                     if multi_turn:
-                        response_mask = data["loss_mask"][:, -response_length:]
+                        response_mask = data["loss_mask"][:, -response_length:].clone().detach()
                     else:
-                        response_mask = attention_mask[:, -response_length:]
+                        response_mask = attention_mask[:, -response_length:].clone().detach()
                     
                     bsz = responses.size(0)
                     # responses与response_mask [bsz, responses length]
