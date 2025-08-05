@@ -9,7 +9,7 @@ def check_and_extract_three_rel_scores(content: str):
     返回:
         Tuple[bool, Optional[List[int]]]:
             - 第一个元素表示是否完全匹配格式（即是否恰好3个）。
-            - 第二个元素是提取的三个整数值列表中的最后一个数。
+            - 第二个元素是提取的三个整数值列表。
     """
     # 匹配所有 \boxed{整数}，支持负数
     matches = re.findall(r"\\boxed\{(-?\d+)\}", content)
@@ -44,9 +44,14 @@ def compute_score(predict_str, ground_truth):
         criteria_pred_acc = 1
     if final_pred == ground_truth:
         final_pred_acc = 1
+    binary_pred_acc = (1 if ground_truth >= 1 else 0) == (1 if final_pred >= 1 else 0)
+
+    acc_reward = 2.0 if final_pred_acc else 0.0
+    binary_acc_reward = 0.5 if binary_pred_acc else 0.0
 
     return {
-        "score": 2.0 if final_pred_acc else 0.0,
+        # "score": acc_reward + binary_acc_reward,
+        "score": acc_reward,
         "pred": final_pred,
         "pred_acc": final_pred_acc,
         "init_pred": init_pred,
@@ -59,6 +64,9 @@ def compute_score(predict_str, ground_truth):
         "ground_truth": ground_truth,
         "consistency_acc": -1,
         "is_call_verifier": -1,
+        "binary_ground_truth": 1 if ground_truth >= 1 else 0,
+        "binary_pred":  1 if final_pred >= 1 else 0,
+        "binary_pred_acc": binary_pred_acc
     }
 
 

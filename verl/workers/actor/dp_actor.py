@@ -382,43 +382,46 @@ class DataParallelPPOActor(BasePPOActor):
                     else:
                         response_mask = attention_mask[:, -response_length:].clone().detach()
                     
-                    bsz = responses.size(0)
-                    # responses与response_mask [bsz, responses length]
-                    format_acc = data["format_acc"]
-                    init_pred_acc = data["init_pred_acc"]
-                    criteria_pred_acc= data["criteria_pred_acc"]
-                    final_pred_acc = data["final_pred_acc"]
-                    # \\ 59 boxed 79075 x x x 
-                    # 找到所有 "[59, 79075]" 的起始位置
-                    # sep_pos: [bsz, seq_len-1]，sep_pos[i,j]=True 表示 responses[i,j]==59 且 responses[i,j+1]==79075
-                    sep_pos = (responses == 59) & (responses.roll(-1, dims=1) == 79075)
-                    sep_pos = sep_pos[:, :-1]  # 最后一列 roll 后就越界，截掉
-                    # 对每个样本单独处理
-                    for i in range(bsz):
-                        if format_acc[i] == 0:
-                            continue
-                        # 找到分隔符起始索引，应该恰好有 3 个
-                        boundaries = sep_pos[i].nonzero(as_tuple=False).squeeze(1).tolist()
-                        if len(boundaries) < 3:
-                            print(f"batch内第 {i} 个response预期 3 个分隔符，但实际 {len(boundaries)} 个")
-                            continue
-                        # 计算三段文本的 (start, end) 索引区间, 每个索引是\\的索引 【\\, boxed,{,1,}】
-                        s1, s2, s3 = boundaries[0], boundaries[1], boundaries[2]
-                        start1, end1 = 0, s1 + 4 + 1   
-                        start2, end2 = end1, s2 + 4 + 1     
-                        start3, end3 = end2, response_length
-                        # print(f"batch内第 {i} 个response分隔符索引：{boundaries}，分隔符位置：{s1} {s2} {s3}，区间：{start1}-{end1} {start2}-{end2} {start3}-{end3}, 实际token: {responses[i, start1:end1]}, {responses[i, start2:end2]}, {responses[i, start3:end3]}")
-                        # 根据三个阶段的预测正确性，置零相应段
-                        if final_pred_acc[i] == 1:
-                            if init_pred_acc[i] == 0:
-                                response_mask[i, start1:end1] = 0
-                            if criteria_pred_acc[i] == 0:
-                                response_mask[i, start2:end2] = 0
-                        elif final_pred_acc[i] == 0:
-                            if init_pred_acc[i] == 1:
-                                response_mask[i, start1:end1] = 0
-                            if criteria_pred_acc[i] == 1:
-                                response_mask[i, start2:end2] = 0
+                    if self.config.use_step_loss:
+                        bsz = responses.size(0)
+                        # responses与response_mask [bsz, responses length]
+                        format_acc = data["format_acc"]
+                        init_pred_acc = data["init_pred_acc"]
+                        criteria_pred_acc= data["criteria_pred_acc"]
+                        final_pred_acc = data["final_pred_acc"]
+                        # \\ 59 boxed 79075 x x x 
+                        # 找到所有 "[59, 79075]" 的起始位置
+                        # sep_pos: [bsz, seq_len-1]，sep_pos[i,j]=True 表示 responses[i,j]==59 且 responses[i,j+1]==79075
+                        sep_pos = (responses == 59) & (responses.roll(-1, dims=1) == 79075)
+                        sep_pos = sep_pos[:, :-1]  # 最后一列 roll 后就越界，截掉
+                        # 对每个样本单独处理
+                        for i in range(bsz):
+                            if format_acc[i] == 0:
+                                continue
+                            # 找到分隔符起始索引，应该恰好有 3 个
+                            boundaries = sep_pos[i].nonzero(as_tuple=False).squeeze(1).tolist()
+                            if len(boundaries) < 3:
+                                print(f"batch内第 {i} 个response预期 3 个分隔符，但实际 {len(boundaries)} 个")
+                                continue
+                            # 计算三段文本的 (start, end) 索引区间, 每个索引是\\的索引 【\\, boxed,{,1,}】
+                            s1, s2, s3 = boundaries[0], boundaries[1], boundaries[2]
+                            start1, end1 = 0, s1 + 4 + 1   
+                            start2, end2 = end1, s2 + 4 + 1     
+                            start3, end3 = end2, response_length
+                            # print(f"batch内第 {i} 个response分隔符索引：{boundaries}，分隔符位置：{s1} {s2} {s3}，区间：{start1}-{end1} {start2}-{end2} {start3}-{end3}, 实际token: {responses[i, start1:end1]}, {responses[i, start2:end2]}, {responses[i, start3:end3]}")
+                            # 根据三个阶段的预测正确性，置零相应段
+                            if final_pred_acc[i] == 1:
+                                if init_pred_acc[i] == 0:
+                                    if criteria_pred_acc[i] == 1:
+                                        continue
+                                    response_mask[i, start1:end1] = 0
+                                if criteria_pred_acc[i] == 0:
+                                    response_mask[i, start2:end2] = 0
+                            elif final_pred_acc[i] == 0:
+                                if init_pred_acc[i] == 1:
+                                    response_mask[i, start1:end1] = 0
+                                if criteria_pred_acc[i] == 1:
+                                    response_mask[i, start2:end2] = 0
                     
                     old_log_prob = data["old_log_probs"]
                     advantages = data["advantages"]
@@ -461,6 +464,7 @@ class DataParallelPPOActor(BasePPOActor):
                         loss_agg_mode=loss_agg_mode,
                     )
 
+                    # 为了避免 step-grpo 对后续的影响，重新算一次 response_mask
                     if multi_turn:
                         response_mask = data["loss_mask"][:, -response_length:]
                     else:

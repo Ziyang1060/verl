@@ -135,7 +135,10 @@ def compute_score(predict_str, ground_truth):
         "format_acc": format_acc,
         "consistency_acc": reasoning_consistency_acc,
         "is_call_verifier": is_call_verifier,
-        "ground_truth": ground_truth
+        "ground_truth": ground_truth,
+        "binary_ground_truth": 1 if ground_truth >= 1 else 0,
+        "binary_pred":  1 if answer_pred >= 1 else 0,
+        "binary_pred_acc": (1 if ground_truth >= 1 else 0) == (1 if answer_pred >= 1 else 0)
     }
 
 

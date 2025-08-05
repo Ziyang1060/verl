@@ -1,12 +1,12 @@
 # set -x
-# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train.sh &)
+# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp2_uniform.sh &)
 
 ray stop --force
 ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.2.255"
+export MASTER_ADDR="10.148.8.206"
 export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
@@ -30,28 +30,27 @@ pip install peft
 
 
 export project_name='RankRL'
-export exp_name='exp1-8-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa_step1975_no_kl_no_wa'
+export exp_name='GRM_exp2_grpo_redone_sft_v2_general_pe'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp0-2-3-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa/global_step_1975/hf_model"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/redone_32B-rel_sft_v2"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
 
-all_course_filter_easy_hard="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_2w6_bc0.05_mc0.97.process.train.parquet"
-all_course_filter_hard="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v1_2w9_bc0.05.process.train.parquet"
-rl_v2="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/rl_v2_5w_random.process.train.parquet"
-biased_uniform_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.process.pev5.train.parquet"
-biased_random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.process.pev5.train.parquet"
-username_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_author_l3_187.process.pev5.train.parquet"
-train_files="['$biased_random_pev5','$username_pev5']"
+uniform_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.pev0.train.parquet"
+uniform_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.process.pev5.train.parquet"
+random_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.pev0.train.parquet"
+random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.process.pev5.train.parquet"
+extreme_multi_epochs_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v1_3epochs_uniform_random.pev0.train.parquet"
+train_files="['$uniform_pev0']"
 
 adv_estimator=grpo
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
-use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
-kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
+use_kl_loss=True # to use kl loss in actor. When used, we are not applying KL in the reward function.
+kl_loss_coef=0.001 # The coefficient of kl loss. Default is 0.001.
 
 max_prompt_length=$((1024 * 7))
 max_response_length=$((1024 * 2))
@@ -80,12 +79,15 @@ infer_ppo_max_token_len=$(( 3 * (max_prompt_length + max_response_length) ))
 
 offload=True
 
+# 需要手动去 ppo_trainer.yaml 更换
+# --data.val_files "['/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/0226_tiny_random_sample_wtax_unbiased_20250719.process.pev0.train.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/0226_tiny_uniform_sample_wtax_biased.process.pev0.train.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/0320_tiny_longtail_sample_wtax_biased.process.pev0.train.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/knowledge_good_click_note_test_1k_biased.process.pev0.train.parquet']" \
+
 bash scripts/run_dist.sh \
   --data.train_files "$train_files" \
   --data.prompt_key prompt \
   --data.filter_overlong_prompts True \
   --data.truncation 'error' \
-  --data.shuffle True \
+  --data.shuffle False \
   --data.max_prompt_length ${max_prompt_length} \
   --data.max_response_length ${max_response_length} \
   --data.train_batch_size ${train_prompt_bsz} \
@@ -95,6 +97,7 @@ bash scripts/run_dist.sh \
   --algorithm.dynamic_weighted_adv False \
   --algorithm.dynamic_weighted_adv_steps -1 \
   --actor_rollout_ref.actor.use_kl_loss ${use_kl_loss} \
+  --actor_rollout_ref.actor.use_step_loss False \
   --actor_rollout_ref.actor.kl_loss_coef ${kl_loss_coef} \
   --actor_rollout_ref.actor.clip_ratio_low ${clip_ratio_low} \
   --actor_rollout_ref.actor.clip_ratio_high ${clip_ratio_high} \
@@ -109,11 +112,11 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --trainer.total_epochs 3 \
-  --actor_rollout_ref.actor.optim.lr 8e-7 \
+  --trainer.total_epochs 10 \
+  --actor_rollout_ref.actor.optim.lr 1e-6 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps -1 \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio 0.03 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps 20 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio -1 \
   --actor_rollout_ref.actor.optim.min_lr_ratio 0.0 \
   --actor_rollout_ref.actor.optim.num_cycles 0.5 \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
@@ -148,8 +151,8 @@ bash scripts/run_dist.sh \
   --trainer.save_freq -1 \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
   --trainer.resume_mode "disable" \
-  --trainer.resume_from_path "" \
-  --track_data_path "${CHECKPOINT_SAVE}/train_sample"
+  --trainer.resume_from_path ""
+  # --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 
 
 # --trainer.resume_mode disable, auto and resume_path
@@ -157,5 +160,5 @@ bash scripts/run_dist.sh \
 
 # python scripts/model_merger.py merge \
 #     --backend fsdp \
-#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp0-2-3-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa/global_step_1975/actor \
-#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp0-2-3-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa/global_step_1975/hf_model
+#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp1-8-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa_step1975_no_kl_no_wa/global_step_400/actor \
+#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp1-8-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa_step1975_no_kl_no_wa/global_step_400/hf_model

@@ -2,7 +2,7 @@ data:
   tokenizer: null
   use_shm: False
   train_files: ~/data/rlhf/gsm8k/train.parquet
-  val_files: ['/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_random_sample_wtax.process.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0226_tiny_uniform_sample_wtax.process.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/0320_tiny_longtail_sample_wtax.process.test.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/data/knowledge_good_click_note_test_1k.process.test.parquet']
+  val_files: ['/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/0226_tiny_random_sample_wtax_unbiased_20250719.process.pev5.train.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/0226_tiny_uniform_sample_wtax_biased.process.pev5.train.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/0320_tiny_longtail_sample_wtax_biased.process.pev5.train.parquet', '/mnt/ali-sh-1/usr/huaan1/ocean/data/testset/tiny/knowledge_good_click_note_test_1k_biased.process.pev5.train.parquet']
   prompt_key: prompt
   reward_fn_key: data_source
   max_prompt_length: 512
@@ -55,11 +55,13 @@ actor_rollout_ref:
     loss_agg_mode: "token-mean" # / "seq-mean-token-sum" / "seq-mean-token-mean"
     entropy_coeff: 0
     use_kl_loss: False # True for GRPO
+    use_step_loss: False # True for Step-GRPO
     use_torch_compile: True # False to disable torch compile
     kl_loss_coef: 0.001 # for grpo
     kl_loss_type: low_var_kl # for grpo
     ppo_epochs: 1
-    shuffle: False
+    shuffle: True
+    data_loader_seed: 42
     ulysses_sequence_parallel_size: 1 # sp size
     checkpoint:
       contents: ['model', 'optimizer', 'extra']  # with 'hf_model' you can save whole model as hf format, now only use sharded model checkpoint to save space
@@ -233,6 +235,8 @@ algorithm:
   lam: 1.0
   adv_estimator: gae
   norm_adv_by_std_in_grpo: True
+  dynamic_weighted_adv: False
+  dynamic_weighted_adv_steps: 10000
   use_kl_in_reward: False
   kl_penalty: kl  # how to estimate kl divergence
   kl_ctrl:

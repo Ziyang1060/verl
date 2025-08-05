@@ -68,6 +68,53 @@ from verl.workers.rollout.async_server import AsyncLLMServerManager
 
 WorkerType = Type[Worker]
 
+class DynamicWeightEMA:
+    def __init__(self, alpha=0.1, mode="sqrt_inverse", baseline="mean"):
+        self.alpha = alpha
+        self.mode = mode
+        self.baseline = baseline
+        self.ema_weights = None
+
+    def compute_weights(self, class_counts):
+        counts = np.array(list(class_counts.values()), dtype=np.float32)
+        nonzero_counts = counts[counts > 0]
+
+        if len(nonzero_counts) == 0:
+            min_val = 1.0  # 全 0 时 fallback
+        else:
+            min_val = nonzero_counts.min()
+
+        counts = np.where(counts > 0, counts, min_val)
+
+        if self.mode == "inverse":
+            weights = 1.0 / counts
+        elif self.mode == "sqrt_inverse":
+            weights = 1.0 / np.sqrt(counts)
+        elif self.mode == "balanced":
+            total = counts.sum()
+            weights = total / (len(counts) * counts)
+        else:
+            raise ValueError("Unknown mode")
+
+        if self.baseline == "median":
+            weights /= np.median(weights)
+        elif self.baseline == "mean":
+            weights /= np.mean(weights)
+        else:
+            weights /= weights.sum()
+
+        return dict(zip(class_counts.keys(), weights))
+
+    def update(self, class_counts):
+        new_weights = self.compute_weights(class_counts)
+        if self.ema_weights is None:
+            self.ema_weights = new_weights
+        else:
+            for k in new_weights:
+                self.ema_weights[k] = (
+                    self.alpha * new_weights[k] + (1 - self.alpha) * self.ema_weights[k]
+                )
+        return self.ema_weights
 
 class Role(Enum):
     """
@@ -409,6 +456,25 @@ class RayPPOTrainer:
 
         self._validate_config()
         self._create_dataloader(train_dataset, val_dataset, collate_fn, train_sampler)
+        self.val_pred_acc_best_metric = {
+            "random": {
+                "step": -1,
+                "acc": -1
+            },
+            "uniform": {
+                "step": -1,
+                "acc": -1
+            },
+            "longtail":{
+                "step": -1,
+                "acc": -1
+            },
+            "knowledge": {
+                "step": -1,
+                "acc": -1
+            },
+        }
+        self.step_cnt = defaultdict(int)
 
     def _validate_config(self):
         config = self.config
@@ -796,6 +862,57 @@ class RayPPOTrainer:
                             b = metric_dict[key]
                 f1_metrics[f"val-core/label_{label_idx}_F1"] = round(2 * a * b / (a + b), 4)
             metric_dict.update(f1_metrics)
+        
+        if "ground_truth" in reward_extra_infos_dict and "pred_acc" in reward_extra_infos_dict:
+            # 二档指标
+            ground_truth_list = reward_extra_infos_dict["binary_ground_truth"]
+            pred_list = reward_extra_infos_dict["binary_pred"]
+            pred_acc_list = reward_extra_infos_dict["binary_pred_acc"]
+            test_batch.non_tensor_batch["binary_ground_truth"] = ground_truth_list
+            test_batch.non_tensor_batch["binary_pred_acc"] = pred_acc_list
+            assert len(ground_truth_list) == len(pred_acc_list)
+            df = pd.DataFrame({
+                'ground_truth': ground_truth_list,
+                'pred': pred_list,
+                'pred_acc': pred_acc_list,
+            })
+            ground_truth_stats = (
+                df
+                .groupby('ground_truth', observed=True)['pred_acc']
+                .agg(['mean', 'count'])
+                .reset_index()
+            )
+            pred_stats = (
+                df
+                .groupby('pred', observed=True)['pred_acc']
+                .agg(['mean', 'count'])
+                .reset_index()
+            )
+            ground_truth_bins_metrics = {}
+            for _, row in ground_truth_stats.iterrows():
+                label_idx = int(row['ground_truth'])
+                ground_truth_bins_metrics[f"val-aux/binary_gt_label_{label_idx}_({int(row['count'])})/Recall"] = float(f"{row['mean']:.4g}")
+            metric_dict.update(ground_truth_bins_metrics)
+
+            pred_bins_metrics = {}
+            for _, row in pred_stats.iterrows():
+                label_idx = int(row['pred'])
+                pred_bins_metrics[f"val-aux/binary_pred_label_{label_idx}/Precision"] = float(f"{row['mean']:.4g}")
+            metric_dict.update(pred_bins_metrics)
+
+            f1_metrics = {}
+            for label_idx in [0,1]:
+                a = 1
+                b = 1
+                for key in metric_dict:
+                    if f"label_{label_idx}" in key and "binary_" in key:
+                        if "Recall" in key:
+                            a = metric_dict[key]
+                        elif "Precision" in key:
+                            b = metric_dict[key]
+                f1_metrics[f"val-core/binary_label_{label_idx}_F1"] = round(2 * a * b / (a + b), 4)
+            metric_dict.update(f1_metrics)
+
 
         # 需要保证 len(test_batch) % 总卡数 == 0，才能完成推理
         # old_log_prob = self.actor_rollout_wg.compute_log_prob(test_batch)
@@ -903,8 +1020,11 @@ class RayPPOTrainer:
     def _save_checkpoint(self):
         # path: given_path + `/global_step_{global_steps}` + `/actor`
         local_global_step_folder = os.path.join(self.config.trainer.default_local_dir, f"global_step_{self.global_steps}")
-
         print(f"local_global_step_folder: {local_global_step_folder}")
+        if os.path.exists(local_global_step_folder):
+            print(f"Checkpoint_step_{self.global_steps} already exists, skipping save")
+            return
+
         actor_local_path = os.path.join(local_global_step_folder, "actor")
 
         actor_remote_path = None if self.config.trainer.default_hdfs_dir is None else os.path.join(self.config.trainer.default_hdfs_dir, f"global_step_{self.global_steps}", "actor")
@@ -1013,6 +1133,7 @@ class RayPPOTrainer:
             default_backend=self.config.trainer.logger,
             config=OmegaConf.to_container(self.config, resolve=True),
         )
+        ema_weight_calculator = DynamicWeightEMA(alpha=0.2)
 
         self.global_steps = 0
 
@@ -1025,6 +1146,17 @@ class RayPPOTrainer:
             val_metrics = self._validate()
             assert val_metrics, f"{val_metrics=}"
             pprint(f"Initial validation metrics: {val_metrics}")
+            for key, value in val_metrics.items():
+                if "/pred_acc/mean@1" in key:
+                    for k in self.val_pred_acc_best_metric:
+                        if k in key and value > self.val_pred_acc_best_metric[k]["acc"]:
+                            self.val_pred_acc_best_metric[k]["acc"] = value
+                            self.val_pred_acc_best_metric[k]["step"] = self.global_steps
+                            self.step_cnt[self.global_steps] += 1
+                            print(f"New best validation {k}: {value}")
+            val_pred_acc_best_metric = os.path.join(self.config.trainer.default_local_dir, "val_pred_acc_best_metric.json")
+            with open(val_pred_acc_best_metric, "w") as f:
+                json.dump(self.val_pred_acc_best_metric, f, indent=4, ensure_ascii=False)
             logger.log(data=val_metrics, step=self.global_steps)
             if self.config.trainer.get("val_only", False):
                 return
@@ -1189,19 +1321,7 @@ class RayPPOTrainer:
                             pf_ppo_weight_pow=self.config.algorithm.pf_ppo.weight_pow,
                         )
 
-                        label2weight={
-                            -1: 1,
-                            0: 1,
-                            1: 1,
-                            2: 1,
-                            3: 1,
-                        }
                         labels = batch.non_tensor_batch["ground_truth"].tolist()
-                        weights_list = [label2weight[label] for label in labels]
-                        device = batch.batch["advantages"].device
-                        dtype = batch.batch["advantages"].dtype
-                        weights_tensor = torch.tensor(weights_list, device=device, dtype=dtype)
-                        batch.batch["advantages"] = batch.batch["advantages"] * weights_tensor.unsqueeze(1)
                         label_counts = Counter(labels)
                         total_labels = len(labels)
                         df_ratio = pd.DataFrame({
@@ -1212,6 +1332,11 @@ class RayPPOTrainer:
                         alist = []
                         valid_label_1_2 = 0
                         valid_label_0_3 = 0
+                        valid_label_m1 = 0
+                        valid_label_0 = 0
+                        valid_label_1 = 0
+                        valid_label_2 = 0
+                        valid_label_3 = 0
                         for name, data in df_ratio.groupby(["prompt_id"]):
                             alist.append(int(sum(data["pred_acc"])))
                             if alist[-1] > 0 and alist[-1] < self.config.actor_rollout_ref.rollout.n:
@@ -1220,6 +1345,51 @@ class RayPPOTrainer:
                                     valid_label_1_2 += 1
                                 elif data["ground_truth"].iloc[0]== 0 or data["ground_truth"].iloc[0] == 3:
                                     valid_label_0_3 += 1
+
+                                if data["ground_truth"].iloc[0] == -1:
+                                    valid_label_m1 += 1
+                                if data["ground_truth"].iloc[0] == 0:
+                                    valid_label_0 += 1
+                                if data["ground_truth"].iloc[0] == 1:
+                                    valid_label_1 += 1
+                                if data["ground_truth"].iloc[0] == 2:
+                                    valid_label_2 += 1
+                                if data["ground_truth"].iloc[0] == 3:
+                                    valid_label_3 += 1
+                        
+                        if self.config.algorithm.dynamic_weighted_adv and self.global_steps <= self.config.algorithm.dynamic_weighted_adv_steps:
+                            valid_class_counts = {
+                                -1: valid_label_m1,
+                                0: valid_label_0,
+                                1: valid_label_1,
+                                2: valid_label_2,
+                                3: valid_label_3,
+                            }
+                            label2weight = ema_weight_calculator.update(valid_class_counts)
+                        else:
+                            label2weight={
+                                -1: 1,
+                                0: 1,
+                                1: 1,
+                                2: 1,
+                                3: 1,
+                            }
+
+                        metrics.update(
+                            {
+                                "batch/ema_weight_label_-1": label2weight[-1],
+                                "batch/ema_weight_label_0": label2weight[0],
+                                "batch/ema_weight_label_1": label2weight[1],
+                                "batch/ema_weight_label_2": label2weight[2],
+                                "batch/ema_weight_label_3": label2weight[3],
+                            }
+                        )
+                        weights_list = [label2weight[label] for label in labels]
+                        device = batch.batch["advantages"].device
+                        dtype = batch.batch["advantages"].dtype
+                        weights_tensor = torch.tensor(weights_list, device=device, dtype=dtype)
+                        batch.batch["advantages"] = batch.batch["advantages"] * weights_tensor.unsqueeze(1)
+
                         ratio_counts = Counter(alist)
                         right_ratio = round(ratio_counts.get(self.config.actor_rollout_ref.rollout.n, 0) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
                         wrong_ratio = round(ratio_counts.get(0, 0) * self.config.actor_rollout_ref.rollout.n / df_ratio.shape[0], 4)
@@ -1235,6 +1405,11 @@ class RayPPOTrainer:
                                 "batch/all_right_ratio": right_ratio,
                                 "batch/all_wrong_ratio": wrong_ratio,
                                 "batch/valid_ratio": valid_ratio,
+                                "batch/valid_ratio_m1": round(valid_label_m1 / valid_cnt, 4) if valid_cnt > 0 else 0,
+                                "batch/valid_ratio_0": round(valid_label_0 / valid_cnt, 4) if valid_cnt > 0 else 0,
+                                "batch/valid_ratio_1": round(valid_label_1 / valid_cnt, 4) if valid_cnt > 0 else 0,
+                                "batch/valid_ratio_2": round(valid_label_2 / valid_cnt, 4) if valid_cnt > 0 else 0,
+                                "batch/valid_ratio_3": round(valid_label_3 / valid_cnt, 4) if valid_cnt > 0 else 0,
                                 "batch/valid_ratio_1_2": round(valid_label_1_2 / valid_cnt, 4) if valid_cnt > 0 else 0,
                                 "batch/valid_ratio_0_3": round(valid_label_0_3 / valid_cnt, 4) if valid_cnt > 0 else 0,
                             }
@@ -1276,6 +1451,26 @@ class RayPPOTrainer:
                     if self.val_reward_fn is not None and self.config.trainer.test_freq > 0 and (is_last_step or self.global_steps % self.config.trainer.test_freq == 0):
                         with _timer("testing", timing_raw):
                             val_metrics: dict = self._validate()
+                            for key, value in val_metrics.items():
+                                if "/pred_acc/mean@1" in key:
+                                    for k in self.val_pred_acc_best_metric:
+                                        if k in key and value > self.val_pred_acc_best_metric[k]["acc"]:
+                                            self.step_cnt[self.val_pred_acc_best_metric[k]['step']] -= 1
+                                            print(f"Previous best validation {k}: {self.val_pred_acc_best_metric[k]}")
+                                            if os.path.exists(os.path.join(self.config.trainer.default_local_dir, f"global_step_{self.val_pred_acc_best_metric[k]['step']}")) and self.step_cnt[self.val_pred_acc_best_metric[k]['step']] == 0:
+                                                print(f"Removing previous best validation checkpoint {k}")
+                                                import shutil
+                                                shutil.rmtree(os.path.join(self.config.trainer.default_local_dir, f"global_step_{self.val_pred_acc_best_metric[k]['step']}"))
+                                            self.val_pred_acc_best_metric[k]["acc"] = value
+                                            self.val_pred_acc_best_metric[k]["step"] = self.global_steps
+                                            print(f"New best validation {k}: {value}")
+                                            self.step_cnt[self.global_steps] += 1
+                                            if k in ["random", "uniform"]:
+                                                print(f"Saved new best validation checkpoint {k}")
+                                                self._save_checkpoint()
+                            val_pred_acc_best_metric = os.path.join(self.config.trainer.default_local_dir, "val_pred_acc_best_metric.json")
+                            with open(val_pred_acc_best_metric, "w") as f:
+                                json.dump(self.val_pred_acc_best_metric, f, indent=4, ensure_ascii=False)
                             if is_last_step:
                                 last_val_metrics = val_metrics
                         metrics.update(val_metrics)
