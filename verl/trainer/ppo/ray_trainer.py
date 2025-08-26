@@ -1251,6 +1251,31 @@ class RayPPOTrainer:
                         loss_agg_mode = self.config.actor_rollout_ref.actor.loss_agg_mode
                         entropy_loss = agg_loss(loss_mat=entropys, loss_mask=response_masks, loss_agg_mode=loss_agg_mode)
                         old_log_prob_metrics = {"actor/entropy_loss": entropy_loss.detach().item()}
+
+                        # 每个样本内，有效 token 的相对下标：0,1,2,...,len-1；无效处设为 L 以便永不命中
+                        rank = torch.cumsum(response_masks, dim=1) - 1          # 无效处是 -1
+                        L = response_masks.shape[-1]
+                        rank = torch.where(response_masks==1, rank, torch.full_like(rank, L))     # 无效处改为 L
+                        valid_len = response_masks.sum(dim=1)                                  # [B]
+
+                        # 切分点（按各自有效长度的三等分）
+                        cut1 = (valid_len // 3).unsqueeze(1)                         # [B,1]
+                        cut2 = ((valid_len * 2) // 3).unsqueeze(1)                   # [B,1]
+
+                        # 三段的子 mask（都会自动忽略无效位）
+                        front_mask = response_masks & (rank <  cut1)
+                        mid_mask   = response_masks & (rank >= cut1) & (rank <  cut2)
+                        back_mask  = response_masks & (rank >= cut2)
+
+                        entropy_before = agg_loss(loss_mat=entropys, loss_mask=front_mask, loss_agg_mode=loss_agg_mode)
+                        entropy_middle = agg_loss(loss_mat=entropys, loss_mask=mid_mask,   loss_agg_mode=loss_agg_mode)
+                        entropy_after = agg_loss(loss_mat=entropys, loss_mask=back_mask,  loss_agg_mode=loss_agg_mode)
+                        old_log_prob_metrics.update({
+                            "actor/entropy_before_loss": entropy_before.detach().item(),
+                            "actor/entropy_middle_loss": entropy_middle.detach().item(),
+                            "actor/entropy_after_loss": entropy_after.detach().item(),
+                            })
+
                         metrics.update(old_log_prob_metrics)
                         old_log_prob.batch["forward_entropys"] = entropys
                         old_log_prob.batch.pop("entropys")

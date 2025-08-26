@@ -333,7 +333,8 @@ class DataParallelPPOActor(BasePPOActor):
         # See PPO paper for details. https://arxiv.org/abs/1707.06347
         if has_multi_modal_inputs:
             num_mini_batches = data.batch.batch_size[0] // self.config.ppo_mini_batch_size
-            non_tensor_select_keys = ["multi_modal_inputs"]
+            # non_tensor_select_keys = ["multi_modal_inputs"]
+            non_tensor_select_keys = None
             dataloader = data.select(select_keys, non_tensor_select_keys).chunk(num_mini_batches)
         else:
             # dataloader = batch.split(self.config.ppo_mini_batch_size)

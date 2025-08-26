@@ -1,5 +1,5 @@
 # set -x
-# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp1_random.sh &)
+# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_R2_exp1_random.sh &)
 
 ray stop --force
 # ps -ef | grep bash | grep -v grep | awk '{print $2}' | xargs -r kill -9
@@ -31,10 +31,10 @@ pip install peft
 
 
 export project_name='R2'
-export exp_name='R2_exp1_step_grpo_redone_cold_start_12w_uniform_s1100_random'
+export exp_name='R2_exp1_step_grpo_redone_cold_start_5w_unbiased_uniform_s900_unbiased_random_no_kl'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/R2_exp1_step_grpo_redone_cold_start_12w/global_step_1100/hf_model"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/R2_exp1_step_grpo_redone_cold_start_5w_unbiased_uniform/global_step_900_random779_uniform697/hf_model"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -46,7 +46,7 @@ random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.proc
 random_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_unbiased_20250806.process.pev5.train.parquet"
 vanilla_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v0_uniform3_random1.process.pev5.train.parquet"
 extreme_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v1_3epochs_uniform_random.process.pev5.train.parquet"
-train_files="['$random_pev5']"
+train_files="['$random_unbiased_pev5']"
 
 adv_estimator=grpo
 
@@ -150,9 +150,9 @@ bash scripts/run_dist.sh \
   --trainer.test_freq 25 \
   --trainer.save_freq -1 \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
-  --trainer.resume_mode "auto" \
+  --trainer.resume_mode "disable" \
   --trainer.resume_from_path "" \
-  --track_data_path ""
+  --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 
   # --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 # --trainer.resume_mode disable, auto and resume_path

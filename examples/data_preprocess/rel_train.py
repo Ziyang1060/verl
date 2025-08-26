@@ -4,7 +4,7 @@ from datasets import Dataset
 import math
 
 dataset_path = sys.argv[1]
-data_source = f"rel_train_process" # ["rel_train_process", "rel_tiny_random_process", "rel_tiny_uniform_process", "rel_tiny_longtail_process", "rel_tiny_knowledge_process"]:
+data_source = sys.argv[2] # ["rel_train_process", "rel_tiny_random_process", "rel_tiny_uniform_process", "rel_tiny_longtail_process", "rel_tiny_knowledge_process"]:
 
 file_name = dataset_path.split("/")[-1]
 if "jsonl" in file_name:
@@ -15,8 +15,8 @@ elif "csv" in file_name:
     import pandas as pd
     df = pd.read_csv(dataset_path, sep="\t", quoting=3)
     print(df.shape)
-    df_author = pd.read_csv("/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_author_l3_187.csv", sep="\t", quoting=3)
-    df = pd.concat([df, df_author]).sample(frac=1,random_state=42).reset_index(drop=True)
+    # df_author = pd.read_csv("/mnt/ali-sh-1/usr/huaan1/ocean/data/caption/add_captionrl_v3_author_l3_187.csv", sep="\t", quoting=3)
+    # df = pd.concat([df, df_author]).sample(frac=1,random_state=42).reset_index(drop=True)
     df_relone = df
     # label都重复了
     print(df_relone.shape)
@@ -240,11 +240,12 @@ def make_map_fn(split):
             "taxonomy": example.pop("q_tax", ""),
             "requirements_analysis": example.pop("query_analysis", "")
         }
+        caption_fields = ["caption", "caption_abstract", "detail_caption", "dense_caption"]
         note = {            
             "title": example.pop("title", ""),
             "content": example.pop("content", ""),
             "ocr_asr": example.pop("ocr_asr", ""),
-            "caption": example.pop("caption", "")
+            "caption": " ".join(str(example.pop(k, None) or "") for k in caption_fields).strip()[:500]
         }
         note_extra = {
             "author": example.pop("nickname", ""),
@@ -255,6 +256,7 @@ def make_map_fn(split):
         note_xml = dict_to_xml("note", note)
         note_extra_xml = dict_to_xml("note_extra", note_extra)
         inputs = query_xml + "\n" + query_extra_xml + "\n" + note_xml + "\n" + note_extra_xml
+        # 如果不是pev5，需要注释下面的这一行
         inputs += "\n\n请注意，第五步、第六步和第七步的相关性评分都应该用\\boxed{}包裹进行输出，并且进行第五步评分的时候不应该使用第六步中的特殊业务情况。"
 
         label = example.pop("label")
@@ -282,13 +284,13 @@ def make_map_fn(split):
                 "query": example.pop("raw_query", ""),
                 "note_id": example.pop("note_id", ""),
                 "label": label,
-            },
+            }
         }
         return data
 
     return process_fn
 
-train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True)
+train_dataset = train_dataset.map(function=make_map_fn("train"), with_indices=True, remove_columns=train_dataset.column_names)
 print(train_dataset[0])
 print(len(train_dataset))
 train_dataset.to_parquet(target_file_name)

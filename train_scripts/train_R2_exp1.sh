@@ -1,13 +1,13 @@
 # set -x
-# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp1_random.sh &)
+# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_R2_exp1.sh &)
 
 ray stop --force
-# ps -ef | grep bash | grep -v grep | awk '{print $2}' | xargs -r kill -9
 ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
+# ps -ef | grep bash | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.16.252"
+export MASTER_ADDR="10.148.7.196"
 export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
@@ -31,22 +31,24 @@ pip install peft
 
 
 export project_name='R2'
-export exp_name='R2_exp1_step_grpo_redone_cold_start_12w_uniform_s1100_random'
+export exp_name='R2_exp1_step_grpo_redone_cold_start_12w_unbiased_uniform_caption_no_kl_fix_caption_pos'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/R2_exp1_step_grpo_redone_cold_start_12w/global_step_1100/hf_model"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_12w"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
 uniform_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.pev0.train.parquet"
 uniform_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.process.pev5.train.parquet"
 uniform_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_unbiased_20250806.process.pev5.train.parquet"
+caption_uniform_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/caption/add_captionrl_v3p1_2w8_uniform_biased.process.pev5.train.parquet"
 random_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.pev0.train.parquet"
 random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.process.pev5.train.parquet"
 random_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_unbiased_20250806.process.pev5.train.parquet"
 vanilla_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v0_uniform3_random1.process.pev5.train.parquet"
 extreme_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v1_3epochs_uniform_random.process.pev5.train.parquet"
-train_files="['$random_pev5']"
+train_files="['$caption_uniform_unbiased_pev5']"
+# 测试集合在配置文件中修改 /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/verl/trainer/config/ppo_trainer.yaml val_files
 
 adv_estimator=grpo
 
@@ -55,6 +57,7 @@ kl_coef=0.0 # in-reward kl_penalty controller
 use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
 kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
 
+# max_prompt_length=$((7680))
 max_prompt_length=$((1024 * 7))
 max_response_length=$((1024 * 2))
 
@@ -112,11 +115,11 @@ bash scripts/run_dist.sh \
   --+actor_rollout_ref.model.override_config.attention_dropout 0. \
   --+actor_rollout_ref.model.override_config.embd_pdrop 0. \
   --+actor_rollout_ref.model.override_config.resid_pdrop 0. \
-  --trainer.total_epochs 3 \
-  --actor_rollout_ref.actor.optim.lr 8e-7 \
+  --trainer.total_epochs 10 \
+  --actor_rollout_ref.actor.optim.lr 1e-6 \
   --actor_rollout_ref.actor.optim.warmup_style "cosine" \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps -1 \
-  --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio 0.03 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps 20 \
+  --actor_rollout_ref.actor.optim.lr_warmup_steps_ratio -1 \
   --actor_rollout_ref.actor.optim.min_lr_ratio 0.0 \
   --actor_rollout_ref.actor.optim.num_cycles 0.5 \
   --actor_rollout_ref.actor.ppo_mini_batch_size ${train_prompt_mini_bsz} \
@@ -146,24 +149,19 @@ bash scripts/run_dist.sh \
   --reward_model.reward_manager "naive" \
   --trainer.project_name ${project_name} \
   --trainer.experiment_name ${exp_name} \
-  --trainer.val_before_train True \
+  --trainer.val_before_train False \
   --trainer.test_freq 25 \
   --trainer.save_freq -1 \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
-  --trainer.resume_mode "auto" \
+  --trainer.resume_mode "disable" \
   --trainer.resume_from_path "" \
-  --track_data_path ""
+  --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 
-  # --track_data_path "${CHECKPOINT_SAVE}/train_sample"
+# --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 # --trainer.resume_mode disable, auto and resume_path
 # https://verl.readthedocs.io/en/latest/advance/checkpoint.html#
 
 # python scripts/model_merger.py merge \
 #     --backend fsdp \
-#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/GRM_exp1_step_grpo_redone_sft_v4_pev5_5w/global_step_1000/actor \
-#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/GRM_exp1_step_grpo_redone_sft_v4_pev5_5w/global_step_1000/hf_model
-
-# python scripts/model_merger.py merge \
-#     --backend fsdp \
-#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/GRM_exp2_grpo_redone_sft_v2_general_pe/global_step_1450/actor \
-#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/GRM_exp2_grpo_redone_sft_v2_general_pe/global_step_1450/hf_model
+#     --local_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp1-7-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa_step1925_no_kl_no_wa/global_step_375/actor \
+#     --target_dir /mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/exp1-7-redone-sft-v3-rl-v1_no_hard_biased_pev5_process_no_kl_wa_step1925_no_kl_no_wa/global_step_375/hf_model

@@ -7,7 +7,7 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.18.245"
+export MASTER_ADDR="10.148.16.250"
 export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
@@ -31,27 +31,29 @@ pip install peft
 
 
 export project_name='R2'
-export exp_name='R2_exp1_step_grpo_qwen_cold_start_12w'
+export exp_name='R2_exp1_step_grpo_redone_cold_start_5w_unbiased_random_no_kl'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/Qwen2.5-32B-Instruct-rel_sft_process_pev5_12w"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_5w"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
 uniform_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.pev0.train.parquet"
 uniform_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.process.pev5.train.parquet"
+uniform_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_unbiased_20250806.process.pev5.train.parquet"
 random_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.pev0.train.parquet"
 random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.process.pev5.train.parquet"
+random_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_unbiased_20250806.process.pev5.train.parquet"
 vanilla_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v0_uniform3_random1.process.pev5.train.parquet"
 extreme_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v1_3epochs_uniform_random.process.pev5.train.parquet"
-train_files="['$uniform_pev5']"
+train_files="['$random_unbiased_pev5']"
 
 adv_estimator=grpo
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
-use_kl_loss=True # to use kl loss in actor. When used, we are not applying KL in the reward function.
-kl_loss_coef=0.001 # The coefficient of kl loss. Default is 0.001.
+use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
+kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
 
 max_prompt_length=$((1024 * 7))
 max_response_length=$((1024 * 2))
@@ -150,7 +152,7 @@ bash scripts/run_dist.sh \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
   --trainer.resume_mode "disable" \
   --trainer.resume_from_path "" \
-  --track_data_path ""
+  --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 
 # --track_data_path "${CHECKPOINT_SAVE}/train_sample"
 # --trainer.resume_mode disable, auto and resume_path
