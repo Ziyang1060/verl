@@ -3,6 +3,8 @@ import json
 from datasets import Dataset
 import math
 
+# 需要注意使用的 datasets 版本，需要保证处理数据的库版本和训练阶段读取数据的库版本一致！
+
 dataset_path = sys.argv[1]
 data_source = sys.argv[2] # ["rel_train_process", "rel_tiny_random_process", "rel_tiny_uniform_process", "rel_tiny_longtail_process", "rel_tiny_knowledge_process"]:
 
@@ -10,7 +12,7 @@ file_name = dataset_path.split("/")[-1]
 if "jsonl" in file_name:
     with open(dataset_path) as f:
         train_dataset = [json.loads(line) for line in f.readlines()]
-    target_file_name = dataset_path.replace(".jsonl", ".process.pev5.train.parquet")
+    target_file_name = dataset_path.replace(".jsonl", f".{data_source}.pev5.train.parquet")
 elif "csv" in file_name:
     import pandas as pd
     df = pd.read_csv(dataset_path, sep="\t", quoting=3)
@@ -32,7 +34,7 @@ elif "csv" in file_name:
     df = df_relone
     df = df[df["label"] > -2]
     train_dataset = df.to_dict('records')
-    target_file_name = dataset_path.replace(".csv", ".process.pev5.train.parquet")
+    target_file_name = dataset_path.replace(".csv", f".{data_source}.pev5.train.parquet")
 
 print(len(train_dataset))
 def clean_dict(d):
@@ -258,13 +260,15 @@ def make_map_fn(split):
         inputs = query_xml + "\n" + query_extra_xml + "\n" + note_xml + "\n" + note_extra_xml
         # 如果不是pev5，需要注释下面的这一行
         inputs += "\n\n请注意，第五步、第六步和第七步的相关性评分都应该用\\boxed{}包裹进行输出，并且进行第五步评分的时候不应该使用第六步中的特殊业务情况。"
+        # inputs += "\n\n请你先输出你的最终评分，然后说明你的思考过程。"
+
 
         label = example.pop("label")
         label = int(label)
         assert label in [-1,0,1,2,3]
         user_prompt = instruction_v5 + "\n" + inputs
         data = {
-            "data_source": data_source,
+            "data_source": data_source, # 决定使用哪种reward计算机制
             "prompt": [
                 {
                     "role": "system",
@@ -275,12 +279,13 @@ def make_map_fn(split):
                     "content": user_prompt,
                 }
             ],
-            "ability": "rel_cls",
+            "ability": "rel_cls", # 可选，暂时没有起作用
             "reward_model": {"style": "rule", "ground_truth": label},
             "extra_info": {
-                "index": idx,
-                "split": split,
-                "epoch": example.pop("epoch", 0),
+                # side information
+                "index": idx, # 数据集中的下标序号
+                "split": split,  # 历史遗留特征，不具备含义
+                "epoch": example.pop("epoch", 0), # 历史遗留特征，不具备含义
                 "query": example.pop("raw_query", ""),
                 "note_id": example.pop("note_id", ""),
                 "label": label,

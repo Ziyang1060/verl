@@ -7,7 +7,7 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.148.17.8"
+export MASTER_ADDR="10.148.13.120"
 export WORLD_SIZE=5
 export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
@@ -31,10 +31,10 @@ pip install peft
 
 
 export project_name='R2'
-export exp_name='R2_exp1_step_drgrpo_redone_cold_start_12w_unbiased_uniform_no_kl'
+export exp_name='R2_exp1_step_grpo_redone_cold_start_12w_4w_5w_unbiased_uniform'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_12w"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/redone_32B-rel_sft_v3_process_pev5_5w"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -51,17 +51,17 @@ train_files="['$uniform_unbiased_pev5']"
 
 adv_estimator=grpo
 
-kl_coef=0.0 # in-reward kl_penalty controller 
+kl_coef=0 # in-reward kl_penalty controller 
 
-use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
-kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
+use_kl_loss=True # to use kl loss in actor. When used, we are not applying KL in the reward function.
+kl_loss_coef=0.001 # The coefficient of kl loss. Default is 0.001.
 
 # max_prompt_length=$((7680))
 max_prompt_length=$((1024 * 7))
 max_response_length=$((1024 * 2))
 
-# loss_agg_mode="seq-mean-token-mean" # GRPO: 每个序列内先归一化，每个序列等权重，def agg_loss
-loss_agg_mode="seq-mean-token-sum-norm" # Dr.GRPO: 用最大输出token数进行归一化
+loss_agg_mode="seq-mean-token-mean" # GRPO: 每个序列内先归一化，每个序列等权重，def agg_loss
+#loss_agg_mode="seq-mean-token-sum-norm" # Dr.GRPO: 用最大输出token数进行归一化
 
 n_resp_per_prompt=8
 train_prompt_bsz=40

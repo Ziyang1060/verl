@@ -1,0 +1,62 @@
+# 训练参数说明：https://www.lei6393.com/archives/llamafactory-train-prameters-desc
+
+#启动命令
+# ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
+# wandb login xxx
+# export WANDB_PROJECT="SFT_CoT"
+
+run_name: xxx
+# batch_size = 2 * 2 * 16 = 64
+# update step = 138004 * 0.95 / 64 = 2048 steps
+
+### model
+model_name_or_path: xxx
+trust_remote_code: true
+
+### method
+stage: sft
+do_train: true
+finetuning_type: full
+deepspeed: examples/deepspeed/ds_z3_config.json # choices: [ds_z0_config.json, ds_z2_config.json, ds_z3_config.json]
+
+### dataset
+dataset: rel_sft_v5_8w_process_refuse
+template: qwen
+disable_shuffling: true
+cutoff_len: 8192
+# max_samples: 600000 # For debugging purposes, truncate the number of examples for each dataset. (default: None)
+overwrite_cache: true
+preprocessing_num_workers: 16
+dataloader_num_workers: 4
+
+### output
+output_dir: xxx
+logging_steps: 5
+save_steps: 3000
+save_total_limit: 3
+include_effective_tokens_per_second: true
+plot_loss: true
+overwrite_output_dir: true
+save_only_model: false
+resume_from_checkpoint: null
+report_to: wandb  # choices: [none, wandb, tensorboard, swanlab, mlflow]
+
+### train
+per_device_train_batch_size: 2
+gradient_accumulation_steps: 2
+learning_rate: 2.0e-6
+num_train_epochs: 1.0
+lr_scheduler_type: constant
+# lr_scheduler_type: cosine
+warmup_ratio: 0.1
+bf16: true
+ddp_timeout: 180000000
+flash_attn: sdpa
+gradient_checkpointing: false
+
+### eval
+# load_best_model_at_end: true
+# val_size: 0.01
+# per_device_eval_batch_size: 2
+# eval_strategy: steps
+# eval_steps: 500

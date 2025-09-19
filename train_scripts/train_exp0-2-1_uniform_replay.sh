@@ -1,5 +1,5 @@
 # set -x
-# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp1_uniform.sh &)
+# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp0-2-1_uniform_replay.sh &)
 
 ray stop --force
 # ps -ef | grep bash | grep -v grep | awk '{print $2}' | xargs -r kill -9
@@ -7,9 +7,9 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.144.201.7"
+export MASTER_ADDR="10.148.13.120"
 export WORLD_SIZE=5
-export VERIFIER_API_IP_ADDR="10.204.67.35"
+export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
 
 export http_proxy=10.140.24.177:3128
@@ -28,14 +28,13 @@ pip install torchdata
 pip install wandb
 pip install openai
 pip install peft
-pip install scipy
 
 
 export project_name='R2'
-export exp_name='R2_exp1_step_grpo_redone_cold_start_5w_unbiased_uniform_no_kl_cons_daoma_data'
+export exp_name='process0717_stage1_exp0-2-1'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_5w"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_12w"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -47,8 +46,7 @@ random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.proc
 random_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_unbiased_20250806.process.pev5.train.parquet"
 vanilla_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v0_uniform3_random1.process.pev5.train.parquet"
 extreme_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v1_3epochs_uniform_random.process.pev5.train.parquet"
-daoma_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/click_label_1.process.pev5.train.parquet"
-train_files="['$uniform_unbiased_pev5','$daoma_pev5']"
+train_files="['$random_unbiased_pev5']"
 
 adv_estimator=grpo
 
@@ -89,7 +87,7 @@ bash scripts/run_dist.sh \
   --data.prompt_key prompt \
   --data.filter_overlong_prompts True \
   --data.truncation 'error' \
-  --data.shuffle True \
+  --data.shuffle False \
   --data.max_prompt_length ${max_prompt_length} \
   --data.max_response_length ${max_response_length} \
   --data.train_batch_size ${train_prompt_bsz} \

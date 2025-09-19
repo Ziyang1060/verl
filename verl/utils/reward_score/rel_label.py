@@ -12,7 +12,7 @@ import re
 import os
 
 
-VERIFIER_API_IP_ADDR = os.environ["VERIFIER_API_IP_ADDR"]
+VERIFIER_API_IP_ADDR = os.environ.get("VERIFIER_API_IP_ADDR", "10.204.67.35")
 client = OpenAI(api_key="zzy_vllm",
                 base_url=f"http://{VERIFIER_API_IP_ADDR}:8000/v1")
 VERIFIER_PROMPT = '''You are a diligent and precise assistant tasked with evaluating the correctness of responses. You will receive a question, an output sentence, and the correct answer. Your task is to determine if the output sentence accurately answers the question based on the provided correct answer. Respond with either [Correct] or [Incorrect].

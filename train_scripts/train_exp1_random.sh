@@ -28,6 +28,7 @@ pip install torchdata
 pip install wandb
 pip install openai
 pip install peft
+pip install scipy
 
 
 export project_name='R2'

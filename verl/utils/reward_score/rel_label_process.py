@@ -51,8 +51,9 @@ def compute_score(predict_str, ground_truth):
 
     return {
         # "score": acc_reward + binary_acc_reward,
-        "score": acc_reward,
-        "pred": final_pred,
+        "score": acc_reward, # 必选
+        "pred": final_pred, # 必选
+
         "pred_acc": final_pred_acc,
         "init_pred": init_pred,
         "criteria_pred": criteria_pred,

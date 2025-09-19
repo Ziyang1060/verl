@@ -83,8 +83,13 @@ def default_compute_score(data_source, solution_str, ground_truth, extra_info=No
         from . import rel_label
         res = rel_label.compute_score(solution_str, ground_truth)
     elif data_source in ["rel_train_process", "rel_tiny_random_process", "rel_tiny_uniform_process", "rel_tiny_longtail_process", "rel_tiny_knowledge_process"]:
-        from . import rel_label_process
-        res = rel_label_process.compute_score(solution_str, ground_truth)
+        # from . import rel_label_process
+        # res = rel_label_process.compute_score(solution_str, ground_truth)
+        from . import rel_label_process_cons
+        res = rel_label_process_cons.compute_score(solution_str, ground_truth)
+    elif data_source in ["rel_train_process_reverse", "rel_tiny_random_process_reverse", "rel_tiny_uniform_process_reverse", "rel_tiny_longtail_process_reverse", "rel_tiny_knowledge_process_reverse"]:
+        from . import rel_label_process_reverse
+        res = rel_label_process_reverse.compute_score(solution_str, ground_truth)
     else:
         raise NotImplementedError(f"Reward function is not implemented for {data_source=}")
 

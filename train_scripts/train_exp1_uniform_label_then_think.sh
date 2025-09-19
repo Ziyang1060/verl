@@ -1,5 +1,5 @@
 # set -x
-# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp1_uniform.sh &)
+# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp1_uniform_label_then_think.sh &)
 
 ray stop --force
 # ps -ef | grep bash | grep -v grep | awk '{print $2}' | xargs -r kill -9
@@ -7,9 +7,9 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.144.201.7"
+export MASTER_ADDR="10.144.200.241"
 export WORLD_SIZE=5
-export VERIFIER_API_IP_ADDR="10.204.67.35"
+export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
 
 export http_proxy=10.140.24.177:3128
@@ -30,32 +30,25 @@ pip install openai
 pip install peft
 pip install scipy
 
-
 export project_name='R2'
-export exp_name='R2_exp1_step_grpo_redone_cold_start_5w_unbiased_uniform_no_kl_cons_daoma_data'
+export exp_name='R2_exp3_grpo_redone_cold_start_12w_unbiased_uniform_with_kl_reverse_label_then_think'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_5w"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_12w_reverse_label_then_think"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
-uniform_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.pev0.train.parquet"
-uniform_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_biased.process.pev5.train.parquet"
-uniform_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_unbiased_20250806.process.pev5.train.parquet"
-random_pev0="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.pev0.train.parquet"
-random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.process.pev5.train.parquet"
-random_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_unbiased_20250806.process.pev5.train.parquet"
-vanilla_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v0_uniform3_random1.process.pev5.train.parquet"
-extreme_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v1_3epochs_uniform_random.process.pev5.train.parquet"
-daoma_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/click_label_1.process.pev5.train.parquet"
-train_files="['$uniform_unbiased_pev5','$daoma_pev5']"
+
+uniform_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3p1_2w8_uniform_unbiased_20250806.rel_train_process_reverse.pev5.train.parquet"
+random_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_unbiased_20250806.rel_train_process_reverse.pev5.train.parquet"
+train_files="['$uniform_unbiased_pev5']"
 
 adv_estimator=grpo
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
-use_kl_loss=False # to use kl loss in actor. When used, we are not applying KL in the reward function.
-kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
+use_kl_loss=True # to use kl loss in actor. When used, we are not applying KL in the reward function.
+kl_loss_coef=0.001 # The coefficient of kl loss. Default is 0.001.
 
 max_prompt_length=$((1024 * 7))
 max_response_length=$((1024 * 2))
@@ -89,7 +82,7 @@ bash scripts/run_dist.sh \
   --data.prompt_key prompt \
   --data.filter_overlong_prompts True \
   --data.truncation 'error' \
-  --data.shuffle True \
+  --data.shuffle False \
   --data.max_prompt_length ${max_prompt_length} \
   --data.max_response_length ${max_response_length} \
   --data.train_batch_size ${train_prompt_bsz} \
@@ -99,7 +92,7 @@ bash scripts/run_dist.sh \
   --algorithm.dynamic_weighted_adv False \
   --algorithm.dynamic_weighted_adv_steps -1 \
   --actor_rollout_ref.actor.use_kl_loss ${use_kl_loss} \
-  --actor_rollout_ref.actor.use_step_loss True \
+  --actor_rollout_ref.actor.use_step_loss False \
   --actor_rollout_ref.actor.kl_loss_coef ${kl_loss_coef} \
   --actor_rollout_ref.actor.clip_ratio_low ${clip_ratio_low} \
   --actor_rollout_ref.actor.clip_ratio_high ${clip_ratio_high} \

@@ -109,6 +109,53 @@ def compute_gae_advantage_return(
     return advantages, returns
 
 
+def compute_pass_k_advantage(token_level_rewards, response_mask, index, K):
+    """
+    计算按 uid 分组的样本对 pass@K 的边际贡献（advantage），
+    并按组内每个样本的标签（二值 0/1+）分配相同的正/负优势值。
+    返回: (advantages_masked, advantages_masked)
+    假设:
+      - token_level_rewards.sum(dim=-1) 已经代表每个样本的二值成功(1)/失败(0)。
+        如果不是，请先二值化。
+      - index: 长度为 batch_size 的可索引容器，标识每个样本的 uid。
+    """
+    import random
+    from scipy.special import comb
+
+    def calc_adv(val, k):
+        c = len(np.where(val>0)[0])
+        n = len(val)
+        rho = 1 - comb(n-c, k) / comb(n, k)
+        sigma = np.sqrt(rho * (1 - rho))
+        adv_p = (1 - rho) / (sigma + 1e-6)
+        adv_n = (1 - rho - comb(n-c-1, k-1)/comb(n-1,k-1)) / (sigma + 1e-6)
+        new_val = np.where(val==1, adv_p, val)
+        new_val = np.where(new_val==0, adv_n, new_val)
+        return new_val
+
+    scores = token_level_rewards.sum(dim=-1)
+    id2score = defaultdict(list)
+    uid2sid = defaultdict(list)
+    id2mean = {}
+    id2std = {}
+
+    with torch.no_grad():
+        bsz = scores.shape[0]
+        for i in range(bsz):
+            id2score[index[i]].append(scores[i].detach().item())
+            uid2sid[index[i]].append(i)
+        for uid in id2score.keys():
+            reward = np.array(id2score[uid])
+            adv = calc_adv(reward, K)
+            # print(uid2sid[uid])
+            for i in range(len(uid2sid[uid])):
+                scores[uid2sid[uid][i]] = adv[i]
+
+        scores = scores.unsqueeze(-1) * response_mask
+    
+    return scores, scores
+
+
 # NOTE(sgm): this implementation only consider outcome supervision, where the reward is a scalar.
 def compute_grpo_outcome_advantage(
     token_level_rewards: torch.Tensor,

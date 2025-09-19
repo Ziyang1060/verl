@@ -1,5 +1,5 @@
 # set -x
-# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp1_uniform.sh &)
+# (bash /mnt/ali-sh-1/usr/huaan1/ocean/code/verl/train_scripts/train_exp1_uniform_passk.sh &)
 
 ray stop --force
 # ps -ef | grep bash | grep -v grep | awk '{print $2}' | xargs -r kill -9
@@ -7,9 +7,9 @@ ps -ef | grep python | grep -v grep | awk '{print $2}' | xargs -r kill -9
 
 cd /mnt/ali-sh-1/usr/huaan1/ocean/code/verl # Repo root
 
-export MASTER_ADDR="10.144.201.7"
+export MASTER_ADDR="10.148.13.120"
 export WORLD_SIZE=5
-export VERIFIER_API_IP_ADDR="10.204.67.35"
+export VERIFIER_API_IP_ADDR="10.205.180.108"
 # python ./verl/utils/reward_score/rel_label.py # 测试 verifier api
 
 export http_proxy=10.140.24.177:3128
@@ -32,10 +32,10 @@ pip install scipy
 
 
 export project_name='R2'
-export exp_name='R2_exp1_step_grpo_redone_cold_start_5w_unbiased_uniform_no_kl_cons_daoma_data'
+export exp_name='R2_exp2_passk_step_drgrpo_redone_cold_start_12w_unbiased_uniform_no_kl'
 
 # Paths
-export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_5w"
+export MODEL_PATH="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/models/RedOne_32B_20250423143422_s7500-rel_sft_process_pev5_12w"
 export CHECKPOINT_SAVE="/mnt/ali-sh-1/usr/huaan1/ocean/code/verl_checkpoint_save/$exp_name"
 mkdir -p $CHECKPOINT_SAVE
 
@@ -47,10 +47,10 @@ random_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_biased.proc
 random_unbiased_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/rl_v3_4w9_random_unbiased_20250806.process.pev5.train.parquet"
 vanilla_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v0_uniform3_random1.process.pev5.train.parquet"
 extreme_multi_epochs_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/relone_rl_v1_3epochs_uniform_random.process.pev5.train.parquet"
-daoma_pev5="/mnt/ali-sh-1/usr/huaan1/ocean/data/rl/click_label_1.process.pev5.train.parquet"
-train_files="['$uniform_unbiased_pev5','$daoma_pev5']"
+train_files="['$uniform_unbiased_pev5']"
 
-adv_estimator=grpo
+# adv_estimator=grpo
+adv_estimator="grpo_passk_seed"
 
 kl_coef=0.0 # in-reward kl_penalty controller 
 
@@ -60,8 +60,8 @@ kl_loss_coef=0.0 # The coefficient of kl loss. Default is 0.001.
 max_prompt_length=$((1024 * 7))
 max_response_length=$((1024 * 2))
 
-loss_agg_mode="seq-mean-token-mean" # GRPO: 每个序列内先归一化，每个序列等权重，def agg_loss
-# loss_agg_mode="seq-mean-token-sum-norm" # Dr.GRPO: 用最大输出token数进行归一化
+# loss_agg_mode="seq-mean-token-mean" # GRPO: 每个序列内先归一化，每个序列等权重，def agg_loss
+loss_agg_mode="seq-mean-token-sum-norm" # Dr.GRPO: 用最大输出token数进行归一化
 
 n_resp_per_prompt=8
 train_prompt_bsz=40
@@ -89,7 +89,7 @@ bash scripts/run_dist.sh \
   --data.prompt_key prompt \
   --data.filter_overlong_prompts True \
   --data.truncation 'error' \
-  --data.shuffle True \
+  --data.shuffle False \
   --data.max_prompt_length ${max_prompt_length} \
   --data.max_response_length ${max_response_length} \
   --data.train_batch_size ${train_prompt_bsz} \
@@ -149,7 +149,7 @@ bash scripts/run_dist.sh \
   --trainer.project_name ${project_name} \
   --trainer.experiment_name ${exp_name} \
   --trainer.val_before_train True \
-  --trainer.test_freq 25 \
+  --trainer.test_freq 100 \
   --trainer.save_freq -1 \
   --trainer.default_local_dir ${CHECKPOINT_SAVE} \
   --trainer.resume_mode "disable" \
